@@ -18,6 +18,43 @@ interface NodeDetailProps {
 
 type ImageState = "idle" | "loading" | "none" | "error";
 
+interface SkillStringInfo {
+  name: string | null;
+  desc: string | null;
+}
+
+type SkillStringTable = Record<string, { Name?: string; Desc?: string }>;
+
+// String/TW/Skill 是大型 TextAsset JSON（技能 id → {Name, Desc, ...}），解析一次後整個 session 共用。
+let skillStringsPromise: Promise<SkillStringTable> | null = null;
+
+function loadSkillStrings(): Promise<SkillStringTable> {
+  if (!skillStringsPromise) {
+    skillStringsPromise = getNode("String/TW/Skill").then((node) => {
+      try {
+        return JSON.parse(node.text_asset ?? "{}") as SkillStringTable;
+      } catch {
+        return {};
+      }
+    });
+  }
+  return skillStringsPromise;
+}
+
+// 僅在路徑剛好是技能代碼節點（Skill/<職業>/skill/<技能id>）時回傳技能 id。
+function skillIdFromPath(path: string): string | null {
+  const segments = path.split("/");
+  if (
+    segments.length === 4 &&
+    segments[0] === "Skill" &&
+    segments[2] === "skill" &&
+    /^\d+$/.test(segments[3])
+  ) {
+    return segments[3];
+  }
+  return null;
+}
+
 export function NodeDetail({
   path,
   emptyMode = "selection",
@@ -30,6 +67,35 @@ export function NodeDetail({
   const [imgMode, setImgMode] = useState<"exact" | "atlas">("exact");
   const [imgNote, setImgNote] = useState<string | null>(null);
   const [tooltip, setTooltip] = useState<ItemTooltipData | null>(null);
+  const [skillInfo, setSkillInfo] = useState<SkillStringInfo | null>(null);
+
+  // 技能名稱/描述：路徑剛好是技能代碼節點時，查 String/TW/Skill 的名稱表。
+  useEffect(() => {
+    const skillId = path ? skillIdFromPath(path) : null;
+    if (!skillId) {
+      setSkillInfo(null);
+      return;
+    }
+    let active = true;
+    loadSkillStrings()
+      .then((table) => {
+        if (!active) return;
+        // Skill img 的 id 可能補零（如 10000012），字串表的鍵沒有 → 兩種都試
+        const stripped = skillId.replace(/^0+/, "");
+        const entry = table[skillId] ?? (stripped ? table[stripped] : undefined);
+        setSkillInfo(
+          entry
+            ? { name: entry.Name ?? null, desc: entry.Desc ?? null }
+            : null,
+        );
+      })
+      .catch(() => {
+        if (active) setSkillInfo(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [path]);
 
   // 裝備 tooltip：路徑落在 Character 裝備 img 內時由後端聚合回傳，否則為 null。
   useEffect(() => {
@@ -206,6 +272,40 @@ export function NodeDetail({
               ) : null}
             </div>
           </section>
+
+          {skillInfo ? (
+            <section className="editor-card">
+              <header className="editor-card-heading">
+                <div>
+                  <strong>技能資訊</strong>
+                  <span>來源：String/TW/Skill</span>
+                </div>
+              </header>
+              <div className="node-editor-form">
+                <label className="is-wide">
+                  <span>技能名稱</span>
+                  <input readOnly value={skillInfo.name ?? "（查無名稱）"} />
+                </label>
+                <label className="is-wide">
+                  <span>技能描述</span>
+                  {(skillInfo.desc ?? "").includes("\n") ? (
+                    <textarea
+                      readOnly
+                      spellCheck={false}
+                      value={skillInfo.desc ?? "（查無描述）"}
+                    />
+                  ) : (
+                    <input
+                      className="value-input"
+                      readOnly
+                      spellCheck={false}
+                      value={skillInfo.desc ?? "（查無描述）"}
+                    />
+                  )}
+                </label>
+              </div>
+            </section>
+          ) : null}
 
           {detail.text_asset != null ? (
             <section className="editor-card text-editor-card">

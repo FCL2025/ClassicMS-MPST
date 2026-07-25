@@ -135,4 +135,5 @@ GUI 的「匯出」選單會讓使用者自行選擇單一 JSON、PNG 或 XML �
   1,697,823 個 UOL 節點中 1,689,813（99.53%）可精準切幀，其餘回退整張 atlas。
 - 本工具只讀取遊戲資料，不會修改原始 bundles，也不提供 `.wz` 回轉。
 
-詳細格式研究、架構與各階段驗收記錄請見 [docs/PLAN.md](docs/PLAN.md)。
+每次更新加了什麼請見 [CHANGELOG.md](CHANGELOG.md)；詳細格式研究、架構與各階段
+驗收記錄請見 [docs/PLAN.md](docs/PLAN.md)。
