@@ -1,0 +1,30 @@
+# Rust
+**/target/
+/MapleLib-Rust/
+
+# Node / Vite
+/node_modules/
+/dist/
+/dist-web/
+
+# Generated analysis and local caches
+/web-wasm/pkg/
+**/out/
+/cache/
+**/cache/
+/.cache/
+*.cache
+
+# Local configuration and logs
+.env
+.env.*
+!.env.example
+*.log
+npm-debug.log*
+
+# Editor / operating system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini

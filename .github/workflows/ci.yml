@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint Rust
+        run: cargo clippy -p msclassic --all-targets -- -D warnings
+
+      - name: Test Rust
+        run: cargo test -p msclassic --all-targets
+
+      - name: Lint research tools
+        run: cargo clippy -p msclassic --features research-tools --examples -- -D warnings
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Audit frontend dependencies
+        run: npm audit --audit-level=high

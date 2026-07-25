@@ -1,0 +1,5 @@
+[workspace]
+resolver = "2"
+members = ["src-tauri", "web-wasm"]
+# MapleLib oracle 是獨立研究工具，不參與日常 workspace 檢查。
+exclude = ["MapleLib-Rust", "tools/maple-oracle"]

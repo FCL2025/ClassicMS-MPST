@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="512"
+  height="512"
+  viewBox="0 0 512 512"
+  role="img"
+  aria-labelledby="title desc"
+>
+  <title id="title">Maple leaf app icon</title>
+  <desc id="desc">A pale blue maple leaf.</desc>
+  <defs>
+    <linearGradient
+      id="leaf-gradient"
+      x1="255.5116"
+      x2="255.5116"
+      y1="45.4718"
+      y2="465.6816"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop offset="0" stop-color="#ACCBEE" />
+      <stop offset="1" stop-color="#E7F0FD" />
+    </linearGradient>
+  </defs>
+  <path
+    fill="url(#leaf-gradient)"
+    d="M236.75,385.07c0,0-39.49,55.28-122.42,59.23c-9.87-65.16,0-100.7,11.85-130.31
+	c-45.41-25.67-73.05-67.13-82.93-118.47c31.59-21.72,120.44-7.9,138.21,11.85c1.97-67.13,17.77-116.49,74.04-163.26
+	c40.48,32.94,72.07,74.41,72.07,161.28c29.62-17.77,102.67-31.59,140.19-9.87c-3.95,49.36-61.21,112.54-80.95,116.49
+	c7.9,21.72,22.38,77,12.18,132.29c-39.82,0-81.28-17.77-126.69-59.23c3.95,43.44,3.95,82.93,3.95,82.93h-42.23L236.75,385.07z"
+  />
+</svg>

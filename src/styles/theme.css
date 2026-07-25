@@ -1,0 +1,97 @@
+/* 設計 token 層 — 移植自 Harepacker-MPST 的 design system（src/styles/theme.css）。
+   只搬核心 token；MPST 業務專屬 token 不搬。
+   規範：語意顏色一律透過 token 消費，元件內不得出現 ad-hoc 色值。 */
+
+:root {
+  color-scheme: light;
+  --app-bg: oklch(0.985 0 0);
+  --app-grid: rgb(23 23 23 / 0.055);
+  --surface: oklch(0.985 0 0);
+  --surface-raised: #ffffff;
+  --panel: oklch(0.97 0 0);
+  --panel-strong: oklch(0.922 0 0);
+  --border: oklch(0.886 0 0);
+  --border-strong: oklch(0.708 0 0);
+  --text: oklch(0.205 0 0);
+  --text-strong: oklch(0.145 0 0);
+  --muted: oklch(0.439 0 0);
+  --subtle: oklch(0.556 0 0);
+  --accent: oklch(0.205 0 0);
+  --on-accent: #ffffff;
+  --accent-strong: oklch(0.145 0 0);
+  --accent-soft: oklch(0.97 0 0);
+  --accent-wash: rgb(23 23 23 / 0.08);
+  --warning: oklch(0.52 0.14 73);
+  --warning-soft: oklch(0.96 0.05 89);
+  --danger: oklch(0.577 0.245 27.325);
+  --danger-soft: oklch(0.96 0.025 17);
+  --selection: oklch(0.91 0.03 252);
+  --selection-hover: oklch(0.955 0.015 252);
+  --mark: #ffd775;
+  --focus-ring: rgb(23 23 23 / 0.2);
+  --skeleton-base: rgb(23 23 23 / 0.08);
+  --skeleton-highlight: rgb(255 255 255 / 0.7);
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 5px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
+  --shadow: 0 1px 3px rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --button-bg: #ffffff;
+  --menu-bg: #fbfcfc;
+  --disabled: oklch(0.556 0 0);
+  --backdrop-scrim: rgb(0 0 0 / 0.52);
+  /* 值檢視的型別著色（MPST 語意 token） */
+  --type-media: #3979a8;
+  --type-numeric: #7a699d;
+  /* 圖片預覽背景棋盤格（Phase 4 會用到，先備好） */
+  --canvas-checkerboard-base: #ffffff;
+  --canvas-checkerboard-light: #eef2f1;
+  --canvas-checkerboard-dark: #d9e1df;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --app-bg: oklch(0.145 0 0);
+  --app-grid: rgb(255 255 255 / 0.035);
+  --surface: oklch(0.205 0 0);
+  --surface-raised: oklch(0.235 0 0);
+  --panel: oklch(0.18 0 0);
+  --panel-strong: oklch(0.269 0 0);
+  --border: oklch(0.275 0 0);
+  --border-strong: oklch(0.325 0 0);
+  --text: oklch(0.922 0 0);
+  --text-strong: oklch(0.985 0 0);
+  --muted: oklch(0.708 0 0);
+  --subtle: oklch(0.556 0 0);
+  --accent: oklch(0.922 0 0);
+  --on-accent: oklch(0.205 0 0);
+  --accent-strong: oklch(0.985 0 0);
+  --accent-soft: oklch(0.269 0 0);
+  --accent-wash: rgb(245 245 245 / 0.1);
+  --warning: oklch(0.78 0.14 79);
+  --warning-soft: oklch(0.255 0.04 73);
+  --danger: oklch(0.704 0.191 22.216);
+  --danger-soft: oklch(0.27 0.055 22);
+  --selection: oklch(0.325 0 0);
+  --selection-hover: oklch(0.371 0 0);
+  --mark: oklch(0.42 0.12 73);
+  --focus-ring: rgb(245 245 245 / 0.24);
+  --skeleton-base: rgb(255 255 255 / 0.08);
+  --skeleton-highlight: rgb(255 255 255 / 0.18);
+  --shadow: 0 1px 3px rgb(0 0 0 / 0.28), 0 1px 2px -1px rgb(0 0 0 / 0.42);
+  --button-bg: oklch(0.269 0 0);
+  --menu-bg: oklch(0.205 0 0);
+  --disabled: oklch(0.439 0 0);
+  --canvas-checkerboard-base: oklch(0.235 0 0);
+  --canvas-checkerboard-light: oklch(0.235 0 0);
+  --canvas-checkerboard-dark: oklch(0.18 0 0);
+}
+
+* {
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease;
+}

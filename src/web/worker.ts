@@ -1,0 +1,249 @@
+// msclassic web Worker:載入 wasm、執行 RPC、OPFS 同步。
+//
+// 主執行緒送 { id, method, args }；本 Worker 回 { id, ok, result | error }。
+// 長時間工作(OPFS 複製、catalog build)全部在這裡跑,進度用
+// { type: "progress", progress } 訊息回報,避免凍結 UI。
+//
+// OPFS 的 FileSystemSyncAccessHandle 只在 Worker 可用,因此 bundle 複製、
+// sync handle 開啟、catalog 快取讀寫全部集中在這支檔案。
+
+import init, * as wasm from "../../web-wasm/pkg/msclassic_web.js";
+import type { ImportProgress } from "../api";
+
+// wasm-bindgen 產物內的 shim snippet(目錄含 hash,用 glob 免寫死)。
+// 必須與 glue import 的是同一份檔案(同一模組實例),__setSyncHandles 才有效。
+interface Shims {
+  __setSyncHandles(handles: FileSystemSyncAccessHandle[], cache?: FileSystemSyncAccessHandle | null): void;
+  __takeExported(): { path: string; bytes: Uint8Array }[];
+}
+
+const ctx = self as unknown as DedicatedWorkerGlobalScope;
+
+const COPY_CHUNK = 16 * 1024 * 1024;
+const MANIFEST_SIDECAR = "bundles-manifest.json";
+const CATALOG_CACHE_FILE = "catalog-cache.json";
+
+interface BundleMeta {
+  name: string;
+  size: number;
+  lastModified: number;
+}
+
+// wasm 初始化(只需一次);shim snippet 與 wasm URL 由 Vite 處理。
+const ready: Promise<Shims> = (async () => {
+  const shimLoaders = import.meta.glob<Shims>(
+    "../../web-wasm/pkg/snippets/*/wasm_shims/msclassic_shims.js",
+  );
+  const loader = Object.values(shimLoaders)[0];
+  if (!loader) throw new Error("找不到 wasm shim snippet(請先執行 npm run build:wasm)");
+  const [shims] = await Promise.all([
+    loader(),
+    init(new URL("../../web-wasm/pkg/msclassic_web_bg.wasm", import.meta.url)),
+  ]);
+  return shims;
+})();
+
+// 目前開著的 sync handle(re-import 時先關掉)。
+let bundleHandles: FileSystemSyncAccessHandle[] = [];
+let cacheHandle: FileSystemSyncAccessHandle | null = null;
+
+function report(progress: ImportProgress): void {
+  ctx.postMessage({ type: "progress", progress });
+}
+
+function formatMiB(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
+}
+
+function closeHandles(): void {
+  for (const handle of bundleHandles) {
+    try {
+      handle.close();
+    } catch {
+      // 忽略:關閉失敗不影響重建
+    }
+  }
+  bundleHandles = [];
+  if (cacheHandle) {
+    try {
+      cacheHandle.close();
+    } catch {
+      // 同上
+    }
+    cacheHandle = null;
+  }
+}
+
+/** 讀 OPFS 內已記錄的 bundle manifest(上次複製時寫入的 sidecar)。 */
+async function readStoredManifest(
+  root: FileSystemDirectoryHandle,
+): Promise<Record<string, { size: number; lastModified: number }>> {
+  try {
+    const handle = await root.getFileHandle(MANIFEST_SIDECAR);
+    const text = await (await handle.getFile()).text();
+    return JSON.parse(text) as Record<string, { size: number; lastModified: number }>;
+  } catch {
+    return {};
+  }
+}
+
+/** 把異動的 bundle 複製進 OPFS(逐檔分塊 + 進度回報),回傳排序後的 manifest。 */
+async function syncBundlesToOpfs(files: File[]): Promise<BundleMeta[]> {
+  const sorted = [...files].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  const manifest: BundleMeta[] = sorted.map((f) => ({
+    name: f.name,
+    size: f.size,
+    lastModified: f.lastModified,
+  }));
+
+  const root = await navigator.storage.getDirectory();
+  try {
+    // 失敗(不支援或被拒)不擋流程,只是快取可能被瀏覽器清掉。
+    await navigator.storage.persist();
+  } catch {
+    // 忽略
+  }
+
+  const stored = await readStoredManifest(root);
+  const changed = sorted.filter(
+    (f) => stored[f.name]?.size !== f.size || stored[f.name]?.lastModified !== f.lastModified,
+  );
+
+  // 刪掉 OPFS 中不再需要的舊 bundle。
+  const wanted = new Set(manifest.map((m) => m.name));
+  for await (const name of root.keys()) {
+    if (name.endsWith(".bundle") && !wanted.has(name)) {
+      await root.removeEntry(name);
+    }
+  }
+
+  if (changed.length === 0) {
+    report({ phase: "copy", percent: 100, message: "遊戲資料未變動,沿用本機快取" });
+    return manifest;
+  }
+
+  // 空間檢查:只看需要新寫入的量。
+  const needed = changed.reduce((sum, f) => sum + f.size, 0);
+  const estimate = await navigator.storage.estimate();
+  if (estimate.quota != null && estimate.usage != null) {
+    const available = estimate.quota - estimate.usage;
+    if (needed > available) {
+      throw new Error(
+        `瀏覽器儲存空間不足:需要約 ${formatMiB(needed)},可用約 ${formatMiB(available)}。` +
+          "請清出磁碟空間或使用桌面版。",
+      );
+    }
+  }
+
+  const totalBytes = changed.reduce((sum, f) => sum + f.size, 0);
+  let copiedBytes = 0;
+  let fileIndex = 0;
+  for (const file of changed) {
+    fileIndex += 1;
+    const fileHandle = await root.getFileHandle(file.name, { create: true });
+    const sync = await fileHandle.createSyncAccessHandle();
+    try {
+      sync.truncate(0);
+      let offset = 0;
+      while (offset < file.size) {
+        const buffer = await file.slice(offset, offset + COPY_CHUNK).arrayBuffer();
+        sync.write(new Uint8Array(buffer), { at: offset });
+        offset += buffer.byteLength;
+        const percent = ((copiedBytes + offset) / totalBytes) * 100;
+        report({
+          phase: "copy",
+          percent,
+          file: file.name,
+          message: `複製資料到瀏覽器儲存空間(${fileIndex}/${changed.length}): ${file.name}`,
+        });
+      }
+      sync.flush();
+    } finally {
+      sync.close();
+    }
+    copiedBytes += file.size;
+  }
+
+  // 寫入 manifest sidecar,下次比對用。
+  const sidecar = await root.getFileHandle(MANIFEST_SIDECAR, { create: true });
+  const writable = await sidecar.createWritable();
+  const record: Record<string, { size: number; lastModified: number }> = {};
+  for (const m of manifest) record[m.name] = { size: m.size, lastModified: m.lastModified };
+  await writable.write(JSON.stringify(record));
+  await writable.close();
+
+  return manifest;
+}
+
+/** 依 manifest 開啟所有 bundle 與 catalog 快取的 sync handle 並注入 shim。 */
+async function openSyncHandles(shims: Shims, manifest: BundleMeta[]): Promise<void> {
+  closeHandles();
+  const root = await navigator.storage.getDirectory();
+  const handles: FileSystemSyncAccessHandle[] = [];
+  for (const meta of manifest) {
+    const fileHandle = await root.getFileHandle(meta.name);
+    handles.push(await fileHandle.createSyncAccessHandle());
+  }
+  const cacheFile = await root.getFileHandle(CATALOG_CACHE_FILE, { create: true });
+  const cache = await cacheFile.createSyncAccessHandle();
+  bundleHandles = handles;
+  cacheHandle = cache;
+  shims.__setSyncHandles(handles, cache);
+}
+
+async function importBundles(files: File[]): Promise<unknown> {
+  const shims = await ready;
+  const manifest = await syncBundlesToOpfs(files);
+  await openSyncHandles(shims, manifest);
+  report({ phase: "catalog", percent: 100, message: "正在建立資產索引…" });
+  // wasm open 是同步的(catalog build 可能數十秒),在 Worker 跑不會凍結 UI。
+  return wasm.open(manifest);
+}
+
+async function exportSubtree(shims: Shims, path: string): Promise<unknown> {
+  const count = wasm.export_subtree(path) as number;
+  return { count, files: shims.__takeExported() };
+}
+
+async function dispatch(method: string, args: unknown[]): Promise<unknown> {
+  const shims = await ready;
+  switch (method) {
+    case "importBundles":
+      return importBundles(args[0] as File[]);
+    case "listChildren":
+      return wasm.list_children(args[0] as string);
+    case "getNode":
+      return wasm.get_node(args[0] as string);
+    case "getImage":
+      return wasm.get_image(args[0] as string);
+    case "getItemTooltip":
+      return wasm.get_item_tooltip(args[0] as string);
+    case "searchNodes":
+      return wasm.search_nodes(args[0] as string, (args[1] as number | undefined) ?? null);
+    case "exportFile":
+      return wasm.export_file(args[0] as string, args[1] as string);
+    case "exportSubtree":
+      return exportSubtree(shims, args[0] as string);
+    default:
+      throw new Error(`未知 RPC method: ${method}`);
+  }
+}
+
+interface RpcRequest {
+  id: number;
+  method: string;
+  args: unknown[];
+}
+
+ctx.onmessage = (event: MessageEvent<RpcRequest>) => {
+  const { id, method, args } = event.data;
+  dispatch(method, args).then(
+    (result) => ctx.postMessage({ id, ok: true, result }),
+    (error: unknown) =>
+      ctx.postMessage({
+        id,
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+  );
+};

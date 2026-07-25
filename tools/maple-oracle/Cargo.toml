@@ -1,0 +1,31 @@
+[package]
+name = "msclassic-maple-oracle"
+version = "0.1.0"
+edition = "2021"
+publish = false
+autobins = false
+
+[dependencies]
+image = { version = "0.25", default-features = false, features = ["png"] }
+maple_lib = { path = "../../MapleLib-Rust" }
+msclassic = { path = "../../src-tauri" }
+
+[[bin]]
+name = "dims_check"
+path = "../../src-tauri/examples/dims_check.rs"
+
+[[bin]]
+name = "frame_map"
+path = "../../src-tauri/examples/frame_map.rs"
+
+[[bin]]
+name = "frame_map2"
+path = "../../src-tauri/examples/frame_map2.rs"
+
+[[bin]]
+name = "wz_ls"
+path = "../../src-tauri/examples/wz_ls.rs"
+
+[[bin]]
+name = "wzjs_xcheck"
+path = "../../src-tauri/examples/wzjs_xcheck.rs"
