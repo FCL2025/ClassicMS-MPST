@@ -216,6 +216,8 @@ async function dispatch(method: string, args: unknown[]): Promise<unknown> {
       return wasm.get_node(args[0] as string);
     case "getImage":
       return wasm.get_image(args[0] as string);
+    case "getAudio":
+      return wasm.get_audio(args[0] as string);
     case "getItemTooltip":
       return wasm.get_item_tooltip(args[0] as string);
     case "searchNodes":

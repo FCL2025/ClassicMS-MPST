@@ -28,6 +28,11 @@ struct ImagePreviewResult {
     note: Option<String>,
 }
 
+#[derive(Serialize)]
+struct AudioResult {
+    base64: String,
+}
+
 impl AppState {
     fn current_or_open(
         &self,
@@ -232,6 +237,24 @@ async fn get_image(
     .await
 }
 
+/// 取聲音：回 Ogg Vorbis 的 base64（與 get_image 同模式）。
+#[tauri::command]
+async fn get_audio(path: String, state: State<'_, AppState>) -> Result<AudioResult, String> {
+    use base64::Engine;
+
+    let state = state.inner().clone();
+    blocking(move || {
+        let (service, _) = state.current_or_open(None)?;
+        let bytes = service
+            .get_audio(&path)
+            .map_err(|error| error.to_string())?;
+        Ok(AudioResult {
+            base64: base64::engine::general_purpose::STANDARD.encode(bytes),
+        })
+    })
+    .await
+}
+
 #[tauri::command]
 async fn get_item_tooltip(
     path: String,
@@ -310,6 +333,7 @@ fn initial_data_dir() -> Option<String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let cache_dir = app
                 .path()
@@ -327,6 +351,7 @@ pub fn run() {
             list_children,
             get_node,
             get_image,
+            get_audio,
             get_item_tooltip,
             search_nodes,
             export_subtree,

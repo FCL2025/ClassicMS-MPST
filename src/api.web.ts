@@ -53,6 +53,10 @@ export interface ImagePreviewResult {
   note?: string | null;
 }
 
+export interface AudioResult {
+  base64: string;
+}
+
 export interface TooltipStatLine {
   label: string;
   value: string;
@@ -147,6 +151,11 @@ export const getImage = async (path: string): Promise<ImagePreviewResult | null>
   return { base64: uint8ToBase64(result.png), mode: result.mode, note: result.note };
 };
 
+export const getAudio = async (path: string): Promise<AudioResult> => {
+  const bytes = await rpc<Uint8Array>("getAudio", path);
+  return { base64: uint8ToBase64(bytes) };
+};
+
 export const searchNodes = (query: string, limit = 200) =>
   rpc<string[]>("searchNodes", query, limit);
 
@@ -193,6 +202,12 @@ export const exportSubtree = async (path: string): Promise<ExportStats> => {
 
 export const initialPath = (): Promise<string | null> => Promise.resolve(null);
 export const initialDataDir = (): Promise<string | null> => Promise.resolve(null);
+
+/** web 版直接開新分頁。 */
+export const openExternal = (url: string): Promise<void> => {
+  window.open(url, "_blank", "noopener,noreferrer");
+  return Promise.resolve();
+};
 
 /** web 沒有原生儲存對話框,直接回預設檔名(實際下載由 exportFile 觸發)。 */
 export const pickExportPath = (options: ExportDialogOptions): Promise<string | null> =>
@@ -241,6 +256,7 @@ export function typeLabel(tag: number): string {
     case 14: return "vector";
     case 18: case 19: return "canvas";
     case 49: return "TextAsset";
+    case 83: return "AudioClip";
     default: return `type${tag}`;
   }
 }

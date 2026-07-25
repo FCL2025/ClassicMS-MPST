@@ -1,12 +1,15 @@
 //! tooltip 聚合驗證：對幾件代表裝備印出 ItemTooltip。
-use std::path::PathBuf;
 use msclassic::catalog::DataService;
+use std::path::PathBuf;
 
 const DEFAULT_DATA_DIR: &str =
     r"C:\Program Files\Gamania\maplestory_classic\Maplestory_Classic_Data\StreamingAssets\aa\w";
 
 fn main() {
-    let root = std::env::args().nth(1).map(PathBuf::from).unwrap_or_else(|| PathBuf::from(DEFAULT_DATA_DIR));
+    let root = std::env::args()
+        .nth(1)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_DATA_DIR));
     let cache = std::env::temp_dir().join("msclassic_tt_probe.json");
     let (svc, _) = DataService::open(&root, &cache).expect("開啟失敗");
     for path in [

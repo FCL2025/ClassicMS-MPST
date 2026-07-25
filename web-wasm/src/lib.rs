@@ -172,6 +172,13 @@ fn image_result(png: &[u8], mode: &str, note: Option<&str>) -> Result<JsValue, J
     Ok(obj.into())
 }
 
+/// 取聲音：回 Ogg Vorbis bytes（Uint8Array），由前端轉 base64 / blob 播放。
+#[wasm_bindgen]
+pub fn get_audio(path: &str) -> Result<Uint8Array, JsValue> {
+    let bytes = with_service(|s| s.get_audio(path).map_err(|e| e.to_string()))?;
+    Ok(Uint8Array::from(&bytes[..]))
+}
+
 /// 單檔匯出：回 `{ filename: string, bytes: Uint8Array }` 讓前端觸發下載。
 /// 內容由 export.rs 產生；wasm 下經 `export_file_to_memory` 攔截到記憶體，
 /// 不走 JS 收集器（收集器留給 export_subtree 的多檔情境）。

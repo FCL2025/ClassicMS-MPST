@@ -21,10 +21,12 @@ import {
   type OpenResult,
 } from "./api";
 import { ExportMenu } from "./components/ExportMenu";
+import { ChangelogDialog } from "./components/ChangelogDialog";
 import { NodeDetail } from "./components/NodeDetail";
 import { SearchBar } from "./components/SearchBar";
 import { TreeView } from "./components/TreeView";
 import { useTheme } from "./useTheme";
+import { version as APP_VERSION } from "../package.json";
 
 const MIN_TREE_WIDTH = 240;
 const DEFAULT_TREE_WIDTH = 380;
@@ -49,6 +51,8 @@ function selectedTypeLabel(entry: ChildEntry | null): string {
   switch (entry.class_id) {
     case 49:
       return "TextAsset";
+    case 83:
+      return "AudioClip";
     case 114:
       return "MonoBehaviour";
     default:
@@ -80,6 +84,7 @@ export default function App() {
   const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
   const [treeWidth, setTreeWidth] = useState(initialTreeWidth);
   const [resizingTree, setResizingTree] = useState(false);
+  const [showChangelog, setShowChangelog] = useState(false);
   const treeWidthRef = useRef(treeWidth);
   const childrenMapRef = useRef(childrenMap);
   const childRequestsRef = useRef(new Map<string, Promise<void>>());
@@ -309,6 +314,7 @@ export default function App() {
             setToast({ message, tone });
             setStatus(message);
           }}
+          onShowChangelog={() => setShowChangelog(true)}
         />
         {openInfo ? (
           <div className="header-summary" title={dataDir ?? undefined}>
@@ -428,12 +434,13 @@ export default function App() {
         </div>
       ) : null}
       <div className="sr-only" role="status" aria-live="polite">{status}</div>
+      <ChangelogDialog open={showChangelog} onClose={() => setShowChangelog(false)} />
       <footer className="app-footer" title={selected?.path ?? undefined}>
         <span className="footer-node-type">
           {selected ? `類型：${selectedTypeLabel(selected)}` : ""}
         </span>
         <span className="footer-node-path">{selected?.path ?? ""}</span>
-        <span aria-hidden="true" />
+        <span className="footer-version">v{APP_VERSION}</span>
       </footer>
     </div>
   );

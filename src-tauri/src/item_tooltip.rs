@@ -88,11 +88,7 @@ impl DataService {
         let Some(info) = tree.find("info") else {
             return Ok(None);
         };
-        let item_id = img_path
-            .rsplit('/')
-            .next()
-            .unwrap_or_default()
-            .to_string();
+        let item_id = img_path.rsplit('/').next().unwrap_or_default().to_string();
 
         let numeric_id = item_id.parse::<u32>().unwrap_or(0);
         let names = self.item_names()?;
@@ -309,10 +305,7 @@ fn gear_category_line(item_id: &str, category_hint: &str) -> String {
     if let Some(weapon_label) = weapon_type_label(item_id) {
         return format!("武器分類 : {weapon_label}");
     }
-    format!(
-        "裝備分類 : {}",
-        gear_category_label(item_id, category_hint)
-    )
+    format!("裝備分類 : {}", gear_category_label(item_id, category_hint))
 }
 
 /// 8 碼裝備 id 的前 3 位分類碼（id 開頭必為 0，例如 01302000 → 130）。

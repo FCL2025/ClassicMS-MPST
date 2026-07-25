@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   formatValue,
+  getAudio,
   getImage,
   getItemTooltip,
   getNode,
@@ -80,6 +81,43 @@ function AutoTextarea({ value }: { value: string }) {
     el.style.height = `${el.scrollHeight}px`;
   }, [value]);
   return <textarea ref={ref} readOnly spellCheck={false} value={value} />;
+}
+
+// AudioClip（type 83）：點開才向後端取 Ogg Vorbis，轉 blob URL 播放，卸載時釋放。
+function AudioPlayer({ path }: { path: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    let objectUrl: string | null = null;
+    setLoading(true);
+    setError(null);
+    setUrl(null);
+    getAudio(path)
+      .then((result) => {
+        if (!active) return;
+        const bytes = Uint8Array.from(atob(result.base64), (c) => c.charCodeAt(0));
+        objectUrl = URL.createObjectURL(new Blob([bytes], { type: "audio/ogg" }));
+        setUrl(objectUrl);
+      })
+      .catch((nextError) => {
+        if (active) setError(String(nextError));
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [path]);
+
+  if (loading) return <p>正在載入聲音…</p>;
+  if (error) return <p className="error">{error}</p>;
+  if (!url) return null;
+  return <audio controls preload="auto" src={url} style={{ width: "100%" }} />;
 }
 
 export function NodeDetail({
@@ -328,6 +366,18 @@ export function NodeDetail({
                   </label>
                 ) : null}
               </div>
+            </section>
+          ) : null}
+
+          {detail.type_tag === 83 ? (
+            <section className="editor-card audio-player-card">
+              <header className="editor-card-heading">
+                <div>
+                  <strong>聲音</strong>
+                  <span>Ogg Vorbis（由 FSB5 轉封裝）</span>
+                </div>
+              </header>
+              <AudioPlayer path={detail.path} />
             </section>
           ) : null}
 

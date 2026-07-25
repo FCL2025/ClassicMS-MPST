@@ -43,8 +43,12 @@ pub const WASM_VIRTUAL_ROOT: &str = "opfs://bundles";
 
 /// container 路徑要剝掉的前綴（不分大小寫）。
 const JSON_PREFIX: &str = "assets/wzassets/json/";
-/// 目前索引格式版本（Phase 4 加入圖片索引 → 2）。
-const CATALOG_VERSION: u32 = 3;
+/// 聲音資產（AudioClip）的 container 前綴與副檔名。
+/// （副檔名只是名目——內容一律是 FSB5 封裝的 Vorbis。）
+const SOUND_PREFIX: &str = "assets/wzdata/sound/";
+const SOUND_SUFFIXES: [&str; 2] = [".mp3", ".wav"];
+/// 目前索引格式版本（Phase 4 加入圖片索引 → 2；加入聲音索引 → 4）。
+const CATALOG_VERSION: u32 = 4;
 /// 索引只收這兩種副檔名的資產。
 const WZJSON_SUFFIX: &str = ".wzjson";
 const JSON_SUFFIX: &str = ".json";
@@ -72,6 +76,9 @@ pub enum CatalogError {
 
     #[error("索引快取無效: {0}")]
     CacheInvalid(String),
+
+    #[error("音訊轉換錯誤: {0}")]
+    Audio(#[from] crate::audio::AudioError),
 }
 
 pub type Result<T> = std::result::Result<T, CatalogError>;
@@ -85,7 +92,7 @@ pub struct EntryLocation {
     /// 物件資料在 node 內的絕對 offset（已含 dataOffset）。
     pub abs_offset: u64,
     pub byte_size: u32,
-    /// 資產種類：114 = MonoBehaviour(WZJS)、49 = TextAsset(JSON 明文)。
+    /// 資產種類：114 = MonoBehaviour(WZJS)、49 = TextAsset(JSON 明文)、83 = AudioClip(FSB5)。
     pub class_id: i32,
 }
 
@@ -426,15 +433,30 @@ pub struct IndexChild {
     pub img_count: usize,
 }
 
-/// 把 container 路徑正規化成索引鍵；不屬於 json 資產的回 None。
+/// 把 container 路徑正規化成索引鍵；不屬於 json / 聲音資產的回 None。
 fn normalize_container_path(path: &str) -> Option<String> {
     let lower = path.to_lowercase();
-    let stripped = lower
+    if let Some(stripped) = lower
         .strip_prefix(JSON_PREFIX)
-        .map(|_| &path[JSON_PREFIX.len()..])?;
-    for suffix in [WZJSON_SUFFIX, JSON_SUFFIX] {
-        if lower.ends_with(suffix) {
-            return Some(stripped[..stripped.len() - suffix.len()].to_string());
+        .map(|_| &path[JSON_PREFIX.len()..])
+    {
+        for suffix in [WZJSON_SUFFIX, JSON_SUFFIX] {
+            if lower.ends_with(suffix) {
+                return Some(stripped[..stripped.len() - suffix.len()].to_string());
+            }
+        }
+        return None;
+    }
+    // 聲音：`Assets/WzData/Sound/Bgm00/DragonDream.mp3` → `Sound/Bgm00/DragonDream`
+    if lower.starts_with(SOUND_PREFIX) {
+        for suffix in SOUND_SUFFIXES {
+            if lower.ends_with(suffix) {
+                let stripped = &path[SOUND_PREFIX.len()..];
+                return Some(format!(
+                    "Sound/{}",
+                    &stripped[..stripped.len() - suffix.len()]
+                ));
+            }
         }
     }
     None
@@ -617,13 +639,10 @@ impl DataService {
         // img 或 img 內部
         let (img_key, inner) = split_img_prefix(&self.catalog, path)
             .ok_or_else(|| CatalogError::PathNotFound(path.to_string()))?;
-        if self
-            .catalog
-            .entries
-            .get(&img_key)
-            .is_some_and(|l| l.class_id == objects::CLASS_TEXT_ASSET)
-        {
-            return Ok(vec![]); // TextAsset 沒有子節點
+        if self.catalog.entries.get(&img_key).is_some_and(|l| {
+            l.class_id == objects::CLASS_TEXT_ASSET || l.class_id == objects::CLASS_AUDIO_CLIP
+        }) {
+            return Ok(vec![]); // TextAsset / AudioClip 沒有子節點
         }
         let root = self.tree_for(&img_key)?;
         let node = if inner.is_empty() {
@@ -685,6 +704,22 @@ impl DataService {
                 text_asset: Some(String::from_utf8_lossy(&text_asset.script).into_owned()),
             });
         }
+        // AudioClip（聲音）：只回基本資訊，聲音資料由 get_audio 懶載
+        if loc.class_id == objects::CLASS_AUDIO_CLIP {
+            if !inner.is_empty() {
+                return Err(CatalogError::PathNotFound(path.to_string()));
+            }
+            let clip = self.read_audio_clip(&loc)?;
+            return Ok(NodeDetail {
+                path: path.to_string(),
+                name: clip.name,
+                type_tag: objects::CLASS_AUDIO_CLIP,
+                value: Value::SubTree,
+                node_path: None,
+                children: vec![],
+                text_asset: None,
+            });
+        }
         let root = self.tree_for(&img_key)?;
         let node = if inner.is_empty() {
             root.as_ref()
@@ -709,6 +744,53 @@ impl DataService {
 
     pub fn search(&self, query: &str, limit: usize) -> Vec<String> {
         self.catalog.search(query, limit)
+    }
+
+    /// 讀 AudioClip 物件本身（不含聲音資料）。
+    fn read_audio_clip(&self, loc: &EntryLocation) -> Result<objects::AudioClipInfo> {
+        self.validate_location(loc)?;
+        let bundle = self
+            .bundles
+            .get(loc.bundle_index as usize)
+            .ok_or_else(|| CatalogError::CacheInvalid("bundle index 越界".into()))?;
+        let data = bundle.read_node_range(
+            loc.node_index as usize,
+            loc.abs_offset,
+            loc.byte_size as usize,
+        )?;
+        Ok(objects::parse_audio_clip(&data, true)?)
+    }
+
+    /// 取聲音：AudioClip → FSB5 → 轉封裝成 Ogg Vorbis bytes。
+    pub fn get_audio(&self, path: &str) -> Result<Vec<u8>> {
+        let (img_key, inner) = split_img_prefix(&self.catalog, path)
+            .ok_or_else(|| CatalogError::PathNotFound(path.to_string()))?;
+        if !inner.is_empty() {
+            return Err(CatalogError::PathNotFound(path.to_string()));
+        }
+        let loc = self
+            .catalog
+            .entries
+            .get(&img_key)
+            .ok_or_else(|| CatalogError::PathNotFound(img_key.clone()))?
+            .clone();
+        if loc.class_id != objects::CLASS_AUDIO_CLIP {
+            return Err(CatalogError::PathNotFound(format!(
+                "{img_key} 不是 AudioClip（class {}）",
+                loc.class_id
+            )));
+        }
+        let clip = self.read_audio_clip(&loc)?;
+        let bundle = self
+            .bundles
+            .get(loc.bundle_index as usize)
+            .ok_or_else(|| CatalogError::CacheInvalid("bundle index 越界".into()))?;
+        let node = bundle.node(&clip.resource_node).ok_or_else(|| {
+            CatalogError::CacheInvalid(format!("找不到 resource node: {}", clip.resource_node))
+        })?;
+        let fsb =
+            bundle.read_node_range(node, clip.resource_offset, clip.resource_size as usize)?;
+        Ok(crate::audio::fsb_to_ogg(&fsb)?)
     }
 
     pub(crate) fn cached_image(&self, path: &str) -> Result<Option<Arc<Vec<u8>>>> {

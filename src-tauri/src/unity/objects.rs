@@ -13,6 +13,7 @@ use super::{Reader, Result, UnityError};
 // classID 常數
 pub const CLASS_TEXTURE2D: i32 = 28;
 pub const CLASS_TEXT_ASSET: i32 = 49;
+pub const CLASS_AUDIO_CLIP: i32 = 83;
 pub const CLASS_MONO_BEHAVIOUR: i32 = 114;
 pub const CLASS_MONO_SCRIPT: i32 = 115;
 pub const CLASS_ASSET_BUNDLE: i32 = 142;
@@ -73,6 +74,64 @@ pub fn parse_text_asset(data: &[u8], endian: impl EndianSource) -> Result<TextAs
     }
     let script = r.take(len)?.to_vec();
     Ok(TextAsset { name, script })
+}
+
+// ── AudioClip(83) ──────────────────────────────────────────────
+
+#[derive(Debug)]
+pub struct AudioClipInfo {
+    pub name: String,
+    pub channels: i32,
+    pub frequency: i32,
+    /// 長度（秒）。
+    pub length: f32,
+    /// m_Resource 指向的 resource node 名稱（m_Source 最後一段）。
+    pub resource_node: String,
+    /// 聲音資料（FSB5）在 resource node 內的 offset。
+    pub resource_offset: u64,
+    pub resource_size: u64,
+}
+
+/// 依 6000.3.16f1 實測對齊：m_Name → 4×i32 → f32 → bool+align → i32
+/// → 3×bool+align → StreamedResource(m_Source 對齊字串, m_Offset u64, m_Size u64)。
+pub fn parse_audio_clip(data: &[u8], endian: impl EndianSource) -> Result<AudioClipInfo> {
+    let mut r = make_reader(data, endian);
+    let name = r.aligned_string()?;
+    let _load_type = r.i32()?;
+    let channels = r.i32()?;
+    let frequency = r.i32()?;
+    let _bits_per_sample = r.i32()?;
+    let length = r.f32()?;
+    let _is_tracker_format = r.bool()?;
+    r.align4();
+    let _subsound_index = r.i32()?;
+    let _preload_audio_data = r.bool()?;
+    let _load_in_background = r.bool()?;
+    let _legacy_3d = r.bool()?;
+    r.align4();
+    let source = r.aligned_string()?;
+    let resource_offset = r.u64()?;
+    let resource_size = r.u64()?;
+    if channels <= 0 || channels > 8 || frequency <= 0 {
+        return Err(UnityError::Format(format!(
+            "AudioClip {name:?} 參數異常: channels={channels} frequency={frequency}"
+        )));
+    }
+    let resource_node = source
+        .rsplit('/')
+        .next()
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| UnityError::Format(format!("AudioClip {name:?} m_Source 為空")))?
+        .to_string();
+    Ok(AudioClipInfo {
+        name,
+        channels,
+        frequency,
+        length,
+        resource_node,
+        resource_offset,
+        resource_size,
+    })
 }
 
 // ── MonoScript(115) ────────────────────────────────────────────

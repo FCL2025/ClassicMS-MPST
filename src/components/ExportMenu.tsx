@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { exportFile, pickExportPath, type ExportFormat } from "../api";
+import { exportFile, openExternal, pickExportPath, type ExportFormat } from "../api";
+
+const DISCORD_INVITE_URL = "https://discord.gg/BnnAympQZW";
 
 interface ExportMenuProps {
   canExportPng: boolean;
   nodeName: string | null;
   path: string | null;
   onMessage: (message: string, tone?: "success" | "error") => void;
+  onShowChangelog: () => void;
 }
 
 interface ExportOption {
@@ -25,7 +28,7 @@ function safeFileName(value: string): string {
   return sanitized || "export";
 }
 
-export function ExportMenu({ canExportPng, nodeName, path, onMessage }: ExportMenuProps) {
+export function ExportMenu({ canExportPng, nodeName, path, onMessage, onShowChangelog }: ExportMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [exporting, setExporting] = useState<ExportFormat | null>(null);
@@ -109,6 +112,16 @@ export function ExportMenu({ canExportPng, nodeName, path, onMessage }: ExportMe
           </div>
         ) : null}
       </div>
+      <button
+        className="app-menu-trigger"
+        type="button"
+        onClick={() => void openExternal(DISCORD_INVITE_URL)}
+      >
+        加入 Discord
+      </button>
+      <button className="app-menu-trigger" type="button" onClick={onShowChangelog}>
+        更新日誌
+      </button>
     </nav>
   );
 }

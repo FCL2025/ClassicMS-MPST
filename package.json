@@ -1,7 +1,7 @@
 {
   "name": "msclassic-viewer",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "楓之谷經典版 Unity 資料瀏覽、圖片預覽與 JSON/PNG/XML 匯出工具",
   "type": "module",
   "scripts": {
@@ -26,6 +26,7 @@
     "@tanstack/react-virtual": "^3.13.0",
     "@tauri-apps/api": "^2.6.0",
     "@tauri-apps/plugin-dialog": "^2.7.2",
+    "@tauri-apps/plugin-opener": "^2.5.4",
     "fflate": "^0.8.3",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"

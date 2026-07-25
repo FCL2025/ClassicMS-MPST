@@ -2,6 +2,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 export type ChildEntry =
   | { kind: "Category"; name: string; path: string; img_count: number }
@@ -50,6 +51,10 @@ export interface ImagePreviewResult {
   note?: string | null;
 }
 
+export interface AudioResult {
+  base64: string;
+}
+
 export interface TooltipStatLine {
   label: string;
   value: string;
@@ -93,6 +98,7 @@ export const openDataDir = (path?: string) => invoke<OpenResult>("open_data_dir"
 export const listChildren = (path: string) => invoke<ChildEntry[]>("list_children", { path });
 export const getNode = (path: string) => invoke<NodeDetail>("get_node", { path });
 export const getImage = (path: string) => invoke<ImagePreviewResult | null>("get_image", { path });
+export const getAudio = (path: string) => invoke<AudioResult>("get_audio", { path });
 export const getItemTooltip = (path: string) =>
   invoke<ItemTooltip | null>("get_item_tooltip", { path });
 export const searchNodes = (query: string, limit = 200) =>
@@ -102,6 +108,9 @@ export const exportFile = (path: string, format: ExportFormat, outputPath: strin
   invoke<FileExportResult>("export_file", { path, format, outputPath });
 export const initialPath = () => invoke<string | null>("initial_path");
 export const initialDataDir = () => invoke<string | null>("initial_data_dir");
+
+/** 以系統預設瀏覽器開啟外部連結（桌面版走 opener plugin）。 */
+export const openExternal = (url: string) => openUrl(url);
 
 /** web 版的匯入進度（OPFS 複製 / 索引建立）;桌面版沒有,onProgress 為 no-op。 */
 export interface ImportProgress {
@@ -157,6 +166,7 @@ export function typeLabel(tag: number): string {
     case 14: return "vector";
     case 18: case 19: return "canvas";
     case 49: return "TextAsset";
+    case 83: return "AudioClip";
     default: return `type${tag}`;
   }
 }
