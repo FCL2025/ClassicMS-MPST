@@ -1,6 +1,6 @@
 //! 技能資料匯出工具。
 //!
-//! 彙整三個來源成單一 JSON（預設 `out/skills.json`）：
+//! 彙整三個來源成單一 JSON（預設輸出到 Discord 素材資料夾）：
 //! - `Skill/*`：技能本體（各職業 img 的 `skill/<id>` 節點，含 action 與每級數值）
 //! - `String/TW/Skill`：技能名稱 / 說明（TextAsset，UTF-8 明文 JSON）
 //! - `Character/00002000`：技能動作影格，加總 |delay|（負號無視）得到技能總延遲
@@ -21,6 +21,9 @@ const DATA_DIR: &str =
 const STRING_SKILL: &str = "String/TW/Skill";
 const CHARACTER: &str = "Character/00002000";
 
+/// 預設輸出目的地：楓之谷經典版 Discord 素材資料夾。
+const DEFAULT_OUT: &str = r"C:\Users\cl202\Desktop\楓之谷經典版-Discord\經典版技能改動\skills.json";
+
 /// 只匯出這些職業（job）的技能。
 const JOB_WHITELIST: &[&str] = &[
     "100", "200", "300", "400", "500", //
@@ -35,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out = std::env::args()
         .nth(1)
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("out/skills.json"));
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_OUT));
 
     let cache = PathBuf::from("out/export_catalog_cache.json");
     let (svc, info) = DataService::open(Path::new(DATA_DIR), &cache)?;
