@@ -21,6 +21,16 @@ const DATA_DIR: &str =
 const STRING_SKILL: &str = "String/TW/Skill";
 const CHARACTER: &str = "Character/00002000";
 
+/// 只匯出這些職業（job）的技能。
+const JOB_WHITELIST: &[&str] = &[
+    "100", "200", "300", "400", "500", //
+    "110", "120", "130", "111", "121", "131", "112", "122", "132", //
+    "210", "220", "230", "211", "221", "231", "212", "222", "232", //
+    "310", "320", "311", "321", "312", "322", //
+    "410", "420", "411", "421", "412", "422", //
+    "510", "520", "511", "521", "512", "522",
+];
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out = std::env::args()
         .nth(1)
@@ -82,6 +92,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             continue;
         };
         let job = key.trim_start_matches("Skill/");
+        if !JOB_WHITELIST.contains(&job) {
+            continue;
+        }
         for skill in &skill_root.children {
             let sid = &skill.name;
 
@@ -99,14 +112,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             let mut per_action = Map::new();
-            let mut total_delay: Option<i64> = None;
-            for (i, name) in actions.iter().enumerate() {
+            for name in &actions {
                 match action_delays.get(name) {
                     Some(d) => {
                         per_action.insert(name.clone(), json!(d));
-                        if i == 0 {
-                            total_delay = Some(*d);
-                        }
                     }
                     None => missing_action.push((sid.clone(), name.clone())),
                 }
@@ -124,6 +133,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut entry = Map::new();
             entry.insert("id".into(), json!(sid));
             entry.insert("job".into(), json!(job));
+            entry.insert(
+                "action".into(),
+                actions
+                    .first()
+                    .map(|a| json!(a))
+                    .unwrap_or(serde_json::Value::Null),
+            );
+            entry.insert("actionDelays".into(), serde_json::Value::Object(per_action));
             entry.insert(
                 "name".into(),
                 strinfo
@@ -146,20 +163,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "levelDesc".into(),
                 strinfo
                     .and_then(|m| m.get("LevelDesc").cloned())
-                    .unwrap_or(serde_json::Value::Null),
-            );
-            entry.insert(
-                "action".into(),
-                actions
-                    .first()
-                    .map(|a| json!(a))
-                    .unwrap_or(serde_json::Value::Null),
-            );
-            entry.insert("actionDelays".into(), serde_json::Value::Object(per_action));
-            entry.insert(
-                "totalDelay".into(),
-                total_delay
-                    .map(|d| json!(d))
                     .unwrap_or(serde_json::Value::Null),
             );
             entry.insert("levels".into(), levels);
