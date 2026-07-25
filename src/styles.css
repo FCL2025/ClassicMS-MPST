@@ -1126,6 +1126,15 @@ textarea:focus-visible,
   font-size: 0.72rem;
 }
 
+/* 技能資訊卡片：文字欄位跟技能名稱用同一種字體大小，高度由 JS 依內容撐開 */
+.skill-info-card .node-editor-form textarea {
+  font-family: inherit;
+  font-size: inherit;
+  min-height: 0;
+  resize: none;
+  overflow: hidden;
+}
+
 .text-asset-editor {
   min-height: 300px;
   max-height: 60vh;

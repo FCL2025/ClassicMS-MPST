@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   formatValue,
   getImage,
@@ -21,9 +21,13 @@ type ImageState = "idle" | "loading" | "none" | "error";
 interface SkillStringInfo {
   name: string | null;
   desc: string | null;
+  levelDesc: string | null;
 }
 
-type SkillStringTable = Record<string, { Name?: string; Desc?: string }>;
+type SkillStringTable = Record<
+  string,
+  { Name?: string; Desc?: string; LevelDesc?: Record<string, string> }
+>;
 
 // String/TW/Skill 是大型 TextAsset JSON（技能 id → {Name, Desc, ...}），解析一次後整個 session 共用。
 let skillStringsPromise: Promise<SkillStringTable> | null = null;
@@ -53,6 +57,29 @@ function skillIdFromPath(path: string): string | null {
     return segments[3];
   }
   return null;
+}
+
+// LevelDesc 是 {等級: 說明} 的物件，攤平成「Lv.1 …」逐行文字，等級由小到大排序。
+function formatLevelDesc(
+  levelDesc: Record<string, string> | undefined,
+): string | null {
+  if (!levelDesc) return null;
+  const lines = Object.entries(levelDesc)
+    .sort(([a], [b]) => Number(a) - Number(b))
+    .map(([level, text]) => `Lv.${level} ${text}`);
+  return lines.length > 0 ? lines.join("\n") : null;
+}
+
+// 唯讀 textarea，高度依內容自動撐開，不需要捲動或手動拖曳。
+function AutoTextarea({ value }: { value: string }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
+  return <textarea ref={ref} readOnly spellCheck={false} value={value} />;
 }
 
 export function NodeDetail({
@@ -85,7 +112,11 @@ export function NodeDetail({
         const entry = table[skillId] ?? (stripped ? table[stripped] : undefined);
         setSkillInfo(
           entry
-            ? { name: entry.Name ?? null, desc: entry.Desc ?? null }
+            ? {
+                name: entry.Name ?? null,
+                desc: entry.Desc ?? null,
+                levelDesc: formatLevelDesc(entry.LevelDesc),
+              }
             : null,
         );
       })
@@ -274,7 +305,7 @@ export function NodeDetail({
           </section>
 
           {skillInfo ? (
-            <section className="editor-card">
+            <section className="editor-card skill-info-card">
               <header className="editor-card-heading">
                 <div>
                   <strong>技能資訊</strong>
@@ -288,21 +319,14 @@ export function NodeDetail({
                 </label>
                 <label className="is-wide">
                   <span>技能描述</span>
-                  {(skillInfo.desc ?? "").includes("\n") ? (
-                    <textarea
-                      readOnly
-                      spellCheck={false}
-                      value={skillInfo.desc ?? "（查無描述）"}
-                    />
-                  ) : (
-                    <input
-                      className="value-input"
-                      readOnly
-                      spellCheck={false}
-                      value={skillInfo.desc ?? "（查無描述）"}
-                    />
-                  )}
+                  <AutoTextarea value={skillInfo.desc ?? "（查無描述）"} />
                 </label>
+                {skillInfo.levelDesc ? (
+                  <label className="is-wide">
+                    <span>每級數值</span>
+                    <AutoTextarea value={skillInfo.levelDesc} />
+                  </label>
+                ) : null}
               </div>
             </section>
           ) : null}
