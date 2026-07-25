@@ -1,5 +1,5 @@
 //! 量化 spritesheet frame 映射覆蓋率：走正式 API（`parse_wzss` +
-//! `WzssIndex::rect_index_for_node`）逐一檢查每個 canvas 節點能否定位到單一 rect。
+//! `WzssIndex::frame_index_for_node`）逐一檢查每個 canvas 節點能否定位到單一 rect。
 //! 用法：`cargo run --release --features research-tools --example sheet_coverage`
 
 use msclassic::catalog::DataService;
@@ -58,7 +58,7 @@ fn main() {
         let mut missing = 0usize;
         for path in &canvas {
             canvas_total += 1;
-            if wzss.rect_index_for_node(path).is_some() {
+            if wzss.frame_index_for_node(path).is_some() {
                 canvas_exact += 1;
             } else {
                 missing += 1;

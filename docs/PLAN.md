@@ -245,9 +245,16 @@ Phase 1 實作時補踩到的兩個坑（已修掉）：
   依 m_StreamData 從 `.resS` node 取（LZ4 區塊隨機存取，不全解）。
   **像素是 bottom-up**（OpenGL 慣例），atlas rect 也是同一座標系：先裁切、再對最終小圖 flip。
 - **WZSS 索引格式（spritesheet 逆向定案）**：`.wzspritesheet` MonoBehaviour payload，
-  header `u32 version(1|2)` + 6 個 section triple（count/dataOff/tableOff），T2 = sprite rects
-  （x/y/w/h 各 u32，16B/筆）；offset 80 起是 path 字串 + count + 32 hex hash + 8 bytes 0 + 剩餘長度，
-  接著 `WZSS` magic + `u32 version(=4)`；magic 位置實務上直接搜 bytes。多頁 atlas 以頁高向下堆疊。
+  header `u32 atlas 頁數` + 6 個 section triple（count/dataOff/tableOff），T2 = sprite rects
+  （x/y/w/h 各 u32，16B/筆）；offset 80 起是 path 字串 +（對齊 4）count + 每頁「長度 u32(=32)
+  + 32 hex GUID + 8 bytes 0」+ 剩餘長度，接著 `WZSS` magic + `u32 version(=4)`；
+  magic 位置實務上直接搜 bytes，但**掃描窗要隨頁數放寬**（`Mob/8830000` 28 頁 → magic 在 1332）。
+- **多頁 atlas 定案（2026-07-25，推翻「以頁高向下堆疊」）**：rect 座標是**單頁內**座標，
+  頁號存在 frame 記錄的第 3 個 i32；而該頁號是 WZSS 自己的編號，與 atlas 檔名 `_N` 是兩套。
+  換算表在 `magic + 8` 起、`頁數` 個 u32（`Skill/232` = [3,4,2,1,0]、`Effect/ItemEff` = [1,0]、
+  `Effect/SetEff` = [0,1]）。GUID 清單本身是檔名順序（可用 Addressables `catalog.bin` 反查驗證），
+  不是頁順序，不能拿來當對照。驗證方式：正確配對時貼圖上不透明像素應 100% 落在該頁 rect 聯集內
+  ——186 個多頁 spritesheet 全數 0% 外溢。
 - **WZSS frame 映射第二輪調查（2026-07-24，結論：不可由資料推導）**：
   - section2 = N 個 rect（x/y/w/h）+ N 組 UV float；section4 = canvas 數個 32-hex
     （推測 per-canvas sprite GUID）；section5 = rect 數個 64-hex（推測 packed sprite + atlas ID 對）。
@@ -458,3 +465,4 @@ Phase 2 的格式風險已由 11,284/11,284 WZJS 全量解碼、fixture 與 v83 
 | 2026-07-25 | **UOL 節點開放圖片預覽/匯出**：先前只有 Canvas tag（18/19）能觸發 `get_image`；但 WZSS 節點鍵池本就收錄 UOL 節點（鍵池筆數 = canvas + uol），`rect_index_for_node` 對 UOL 自身相對路徑一樣能查到別名槽指回的 frame，不需額外邏輯。新增 `wzjs::node::is_image_capable_tag`（Canvas 或 UOL）取代三處 `is_canvas_tag` 守門（`image/render.rs` 的 `get_image_uncached`／`get_canvas_atlas_fallback`、`export.rs` 單檔 PNG 匯出），前端 `NodeDetail.tsx`／`App.tsx` 同步放行 `Uol` 型別。新增 `example uol_coverage` 走與 GUI 相同的 `get_image`→`get_canvas_atlas_fallback` 路徑做全量驗證：1,697,823 個 UOL 節點中 1,689,813（99.53%）精準切幀、8,010 回退整頁 atlas、零 panic／零硬錯誤。`cargo test` 49/49、`npm run build` 通過。 |
 | 2026-07-25 | Phase 6 完成：解析器全面加入 count/offset/size 上限與 checked arithmetic；修正 Texture2D inline offset、Sprite rect 裁切、WZSS container 順序與非 Canvas fallback。Catalog 改為完整 manifest 驗證、原子寫入／備份／損壞隔離、EntryLocation 驗證與 per-root cache；DataService 採可共用 immutable service、真正 LRU tree/image cache，Tauri 重工作業移至 blocking worker。前端加入節點／圖片／搜尋 generation guard，去除深連結與樹重複請求。共用 canonical Unity object parser 與單次 SerializedFile 掃描，圖片拆為 index/WZSS/render、catalog 快取持久化分模組。工程面補齊 README、`.gitignore`、CI、NSIS/CSP、workspace 與研究／oracle 工具分流。最終 `cargo fmt`、正式及研究 Clippy `-D warnings`、43 tests、frontend build、`npm audit` 與 Tauri release/NSIS 打包全數通過。 |
 | 2026-07-25 | **網頁版（WASM + OPFS）**：核心不動解析邏輯移植瀏覽器。① `unity/bundle.rs` 抽出 `RangeRead` trait（`Bundle::open_reader`），桌面 `File` 實作與 wasm 的 `JsRangeRead`（經 JS shim `syncReadAt` 走 `FileSystemSyncAccessHandle`）並存；Tauri 依賴收進 `desktop` feature（預設開），`--no-default-features` 可編 wasm32。② 新增 `web-wasm` crate（`msclassic-web`,cdylib）：manifest 驅動的 `Catalog::build_manifest`／`DataService::open_wasm`（size+mtime 驗證、快取走 OPFS 單檔）、7 個 wasm-bindgen 匯出對齊桌面 command 語意（`get_image` 直接回 PNG bytes、`export_file` 回 bytes、`export_subtree` 走 JS 收集器）；回傳走 serde_json→`JSON.parse`（u128 不相容 serde-wasm-bindgen）。③ 前端：`src/web/`（Worker + 手寫 RPC + OPFS 同步：16MB 分塊、quota 檢查、`storage.persist()`、manifest 比對跳過未變動檔）、`pickFolder.ts`（`showDirectoryPicker` 優先、`webkitdirectory` fallback，候選層級複刻 `resolve_data_root`）、`api.web.ts`（介面與 `api.ts` 完全一致，圖片轉 base64 讓 App 零改動、匯出走 Blob 下載、subtree 以 fflate 打包 zip）、`vite.config.web.ts`（alias 替換 api 層，outDir `dist-web/`）。Tauri 對話框集中進 api 層（`pickDataDirectory`/`pickExportPath`）。驗證：wasm32 clippy `-D warnings`、`npm run build:wasm` + `build:web` 產出完整、`npm run check` 全綠（桌面零回歸）、Node 層驗證 wasm→glue→shim 接線可呼叫。瀏覽器實機互動驗收待人工執行（步驟見 README「網頁版」）。 |
+| 2026-07-25 | **多頁 atlas 切圖修正（`Skill/232/skill/2321008/icon` 這類「圖完全不對」與 `Effect/BasicEff/NoRed1/1` 這類「空白」的根因）**：舊 `cut_sprite` 假設多頁 atlas 是「以頁高向下堆疊」，用 `rect.y` 逐頁減頁高找頁——但 rect 座標其實是**單頁內**座標（全量實測 max(y+h) 恆 < 頁高），所以永遠切在第 0 頁，只有剛好在第 0 頁的 sprite 是對的。修正：① frame 記錄 20B 的第 3 個 i32 是 atlas 頁號（全量 10,242 個 sheet 驗證：max+1 == 頁數且每頁都被用到）；② 該頁號是 WZSS 自己的編號，需經 `magic + 8` 起的 `頁數` 個 u32 換算成檔名 `_N`（`Skill/232` = [3,4,2,1,0]）；③ `WzssIndex` 改回傳 `WzssSprite { page, rect }`（`rect_index_for_node` → `frame_index_for_node` + `sprite_for_frame`），`cut_sprite` 依頁號取頁、缺頁明確報錯；④ `render_sheet` 只解碼需要的那一頁（原本每次都解全部頁）。順手修好 `parse_wzss` 的 magic 掃描窗（固定 1024 → 依頁數放寬），`Mob/8830000`／`Mob/8830007`（28 頁）從整張 sheet 解析失敗變正常。驗證：像素級覆蓋率檢查（正確配對時貼圖不透明像素應 100% 落在該頁 rect 聯集內）186/186 個多頁 sheet 全數 0% 外溢；`sheet_coverage` 703,972/704,128 = 99.978%（前 703,542/703,698，增量來自新修好的兩個 sheet）；`uol_coverage` 800 sheet／53,723 個 UOL 節點 99.989% 精準切幀、零錯誤。`cargo test` 51/51、clippy `-D warnings` 全綠。 |

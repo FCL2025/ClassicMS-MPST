@@ -10,20 +10,26 @@
 //! WZSS 格式（逆向定案，見 docs/PLAN.md）。header 是 20 個 u32，
 //! 所有 offset 以 magic 位置為基準（實作上直接搜 `WZSS` bytes，最穩）：
 //! ```text
-//! [0]      u32 版本（1 或 2）
+//! [0]      u32 atlas 頁數
 //! [1]      常數 8
 //! [2..5)   UOL 字串池（count / blobOff / tableOff）
 //! [5..7)   sprite pivot（count / off，8B/筆 = 正規化 2×f32）
-//! [7..9)   sprite rect（count / off，16B/筆 = u32 x,y,w,h）
-//! [9..11)  frame（count / off，20B/筆；第 4 個 i32 是 rect index）
+//! [7..9)   sprite rect（count / off，16B/筆 = u32 x,y,w,h；座標是「單頁內」的）
+//! [9..11)  frame（count / off，20B/筆；第 3 個 i32 是 WZSS atlas 頁號、
+//!          第 4 個是 rect index）
 //! [11..13) link（count / off，16B/筆 = 槽號 / UOL 字串 index(-1) / ? / frame index）
 //! [13..16) 節點鍵池（count / blobOff / tableOff）：每筆 32 hex，以鍵字串排序，
 //!          count = 該 img 的 canvas + uol 節點數
 //! [16..19) 每個 frame 的 64 hex 池（count / blobOff / tableOff）
 //! [19]     path 長度，接著 path 字串（= img 邏輯路徑）
 //! ```
-//! path 之後是 atlas 頁的 hash 清單（count u32、長度 u32(=32)、hex hash…、
-//! 8 bytes 0、u32 剩餘長度），再來才是 `WZSS` magic + u32 version(=4)。
+//! path 之後（對齊到 4）是 atlas 頁的 Addressables GUID 清單（count u32、
+//! 每筆 長度 u32(=32) + hex GUID + 8 bytes 0），再一個 u32 剩餘長度，
+//! 接著才是 `WZSS` magic + u32 version(=4)。
+//!
+//! magic + 8 起是 `頁數` 個 u32 的**頁對照表**：第 i 項 = 「WZSS 頁 i」對應的
+//! atlas 檔名 `_N` 頁號。兩套編號常常不同（`Skill/232` 是 [3,4,2,1,0]），
+//! 少了這層換算會整頁切錯圖。
 //!
 //! 節點鍵池是 sprite 查表索引，鍵的算法見 [`wzss`] 模組。
 
@@ -38,7 +44,7 @@ use crate::unity::serialized_file::SerializedFile;
 use crate::unity::Result;
 
 mod wzss;
-pub use wzss::{cut_sprite, parse_wzss, WzssIndex, WzssRect, WzssUolLink};
+pub use wzss::{cut_sprite, parse_wzss, AtlasPage, WzssIndex, WzssRect, WzssSprite, WzssUolLink};
 
 /// spritesheet：索引物件 + atlas 頁（依 _0, _1… 排序）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -406,13 +412,13 @@ mod tests {
     }
 
     #[test]
-    fn test_wzss_uol_frame_is_resolved_to_rect_and_empty_sentinel() {
+    fn test_wzss_uol_frame_is_resolved_to_frame_and_empty_sentinel() {
         let mut payload = vec![0u8; 320];
         {
             let mut set_header = |index: usize, value: u32| {
                 payload[index * 4..index * 4 + 4].copy_from_slice(&value.to_le_bytes());
             };
-            set_header(0, 1); // version
+            set_header(0, 2); // atlas 頁數
             set_header(2, 2); // UOL string count
             set_header(3, 32); // string blob, relative to magic
             set_header(4, 16); // string offset table
@@ -428,6 +434,10 @@ mod tests {
         payload[80..84].copy_from_slice(b"root");
         let magic = 128;
         payload[magic..magic + 4].copy_from_slice(b"WZSS");
+        payload[magic + 4..magic + 8].copy_from_slice(&4u32.to_le_bytes()); // 版本
+                                                                            // 頁對照表：WZSS 頁 0/1 → 檔名頁 1/0。
+        payload[magic + 8..magic + 12].copy_from_slice(&1u32.to_le_bytes());
+        payload[magic + 12..magic + 16].copy_from_slice(&0u32.to_le_bytes());
         let uol_a = b"../../default/default";
         let uol_b = b"../empty";
         payload[magic + 16..magic + 20].copy_from_slice(&0u32.to_le_bytes());
@@ -444,12 +454,14 @@ mod tests {
                 payload[position..position + 4].copy_from_slice(&value.to_le_bytes());
             }
         }
-        // WzSpriteFrame 第四欄是 rect index；frame 0 刻意對應 rect 1。
-        for (frame, rect) in [1i32, 0, 1].into_iter().enumerate() {
-            let position = magic + 96 + frame * 20 + 12;
-            payload[position..position + 4].copy_from_slice(&rect.to_le_bytes());
+        // WzSpriteFrame 第三欄是 atlas 頁、第四欄是 rect index；frame 0 刻意
+        // 對應 rect 1，且三個 frame 分別落在第 0/1/0 頁。
+        for (frame, (page, rect)) in [(0i32, 1i32), (1, 0), (0, 1)].into_iter().enumerate() {
+            let position = magic + 96 + frame * 20 + 8;
+            payload[position..position + 4].copy_from_slice(&page.to_le_bytes());
+            payload[position + 4..position + 8].copy_from_slice(&rect.to_le_bytes());
         }
-        // link 0 → frame 0 → rect 1；link 1 → frame_count sentinel → 空圖。
+        // link 0 → frame 0；link 1 → frame_count sentinel → 空圖。
         for (link, (string, frame)) in [(0i32, 0i32), (1, 3)].into_iter().enumerate() {
             let position = magic + 160 + link * 16;
             payload[position + 4..position + 8].copy_from_slice(&string.to_le_bytes());
@@ -464,14 +476,31 @@ mod tests {
             vec![
                 WzssUolLink {
                     uol: "../../default/default".into(),
-                    rect_index: Some(1),
+                    frame_index: Some(0),
                 },
                 WzssUolLink {
                     uol: "../empty".into(),
-                    rect_index: None,
+                    frame_index: None,
                 }
             ]
         );
+        // frame 0 在 WZSS 頁 0（= 檔名頁 1）、對到 rect 1；
+        // frame 1 在 WZSS 頁 1（= 檔名頁 0）、對到 rect 0。
+        assert_eq!(
+            parsed.sprite_for_frame(0),
+            Some(WzssSprite {
+                page: 1,
+                rect: parsed.rects[1],
+            })
+        );
+        assert_eq!(
+            parsed.sprite_for_frame(1),
+            Some(WzssSprite {
+                page: 0,
+                rect: parsed.rects[0],
+            })
+        );
+        assert_eq!(parsed.sprite_for_frame(3), None);
     }
 
     #[test]

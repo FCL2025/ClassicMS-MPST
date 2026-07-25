@@ -3,7 +3,7 @@
 use crate::unity::texture;
 use crate::unity::{Result, UnityError};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WzssRect {
     pub x: u32,
     pub y: u32,
@@ -11,15 +11,43 @@ pub struct WzssRect {
     pub h: u32,
 }
 
+/// 一個 frame 在 atlas 上的完整位置：哪一頁 + 該頁內的 rect。
+///
+/// rect 座標是「單頁內」的（實測 x/y+w/h 皆 < 頁寬高），頁號另外存在
+/// frame 記錄裡，兩者缺一不可。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WzssSprite {
+    pub page: usize,
+    pub rect: WzssRect,
+}
+
+/// atlas 的一頁（已解碼 RGBA，仍是 Unity 的 bottom-up 排列）。
+pub struct AtlasPage {
+    /// 檔名 `_N` 後綴的頁號，即 frame 記錄裡的頁索引。
+    pub index: u32,
+    pub width: u32,
+    pub height: u32,
+    pub rgba: Vec<u8>,
+}
+
 /// WZSS 中明確保存的 UOL → sprite frame 關係。
 ///
-/// Canvas 的定位主線是 [`WzssIndex::rect_index_for_node`] 的節點鍵；這條
+/// Canvas 的定位主線是 [`WzssIndex::frame_index_for_node`] 的節點鍵；這條
 /// UOL 反推只在極少數節點沒有對應鍵時當備援（全量 703,698 個 canvas 中 156 個）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WzssUolLink {
     pub uol: String,
     /// `None` 是 WZSS 以 `frame_count` 表示的空圖片 sentinel。
-    pub rect_index: Option<usize>,
+    pub frame_index: Option<usize>,
+}
+
+/// frame 記錄裡真正要用的兩個欄位。
+#[derive(Debug, Clone, Copy)]
+struct FrameEntry {
+    /// atlas 頁索引（第 3 個 i32）。
+    page: usize,
+    /// sprite rect 索引（第 4 個 i32）。
+    rect: usize,
 }
 
 #[derive(Debug)]
@@ -27,13 +55,16 @@ pub struct WzssIndex {
     pub path: String,
     pub rects: Vec<WzssRect>,
     pub uol_links: Vec<WzssUolLink>,
-    /// 節點鍵池，以鍵字串升冪排序。前 `frame_rects.len()` 個是 item 槽
+    /// 節點鍵池，以鍵字串升冪排序。前 `frames.len()` 個是 item 槽
     /// （槽 i ↔ frame i），其後是別名槽（UOL 或重複圖），由 `alias_frames` 指回 frame。
     node_keys: Vec<String>,
-    /// frame → sprite rect index。
-    frame_rects: Vec<usize>,
+    /// frame → (atlas 頁, sprite rect index)。
+    frames: Vec<FrameEntry>,
     /// 別名槽 → frame index（`None` 是空圖 sentinel）。
     alias_frames: AliasFrames,
+    /// WZSS 內部頁號 → atlas 檔名 `_N` 的頁號。兩者是不同的編號，且順序常常
+    /// 不同（例：`Skill/232` 是 [3,4,2,1,0]），必須查表換算。
+    page_map: Vec<usize>,
 }
 
 /// 別名槽 → frame index（`None` 是空圖 sentinel）。
@@ -55,18 +86,26 @@ fn node_key(full_path: &str) -> String {
 }
 
 impl WzssIndex {
-    /// 由 img 內相對路徑精確定位 sprite rect。查無鍵時回 `None`。
-    pub fn rect_index_for_node(&self, inner: &str) -> Option<usize> {
+    /// 由 img 內相對路徑精確定位 frame。查無鍵時回 `None`。
+    pub fn frame_index_for_node(&self, inner: &str) -> Option<usize> {
         let slot = self.slot_of(&node_key(&format!("{}/{inner}", self.path)))?;
-        let frame = if slot < self.frame_rects.len() {
-            slot
+        if slot < self.frames.len() {
+            Some(slot)
         } else {
             self.alias_frames
                 .iter()
                 .find(|(alias, _)| *alias == slot)
-                .and_then(|(_, frame)| *frame)?
-        };
-        self.frame_rects.get(frame).copied()
+                .and_then(|(_, frame)| *frame)
+        }
+    }
+
+    /// frame → atlas 頁（已換算成檔名 `_N` 的頁號）+ 頁內 rect。
+    pub fn sprite_for_frame(&self, frame: usize) -> Option<WzssSprite> {
+        let entry = self.frames.get(frame)?;
+        Some(WzssSprite {
+            page: *self.page_map.get(entry.page)?,
+            rect: *self.rects.get(entry.rect)?,
+        })
     }
 
     /// 池是排序過的，正常走二分搜尋；資料若不符排序不變量則退回線性搜尋。
@@ -83,11 +122,6 @@ impl WzssIndex {
 
 /// 解析 WZSS 索引 MonoBehaviour payload（已去 Unity 標頭）。
 pub fn parse_wzss(payload: &[u8]) -> Result<WzssIndex> {
-    let magic = payload
-        .windows(4)
-        .take(1024)
-        .position(|window| window == b"WZSS")
-        .ok_or_else(|| UnityError::Format("WZSS magic 不存在".into()))?;
     if payload.len() < 80 {
         return Err(UnityError::Format("WZSS payload 太短".into()));
     }
@@ -98,6 +132,17 @@ pub fn parse_wzss(payload: &[u8]) -> Result<WzssIndex> {
                 .expect("80-byte header was validated"),
         )
     };
+    // magic 前面是 path 與每頁 44 bytes 的 GUID 清單，頁數多時可以推到 1KB 以外
+    // （`Mob/8830000` 有 28 頁、magic 在 1332）。掃描窗依頁數放寬，仍留上界避免
+    // 在資料區誤命中。
+    let scan = 128usize
+        .saturating_add(header(19) as usize)
+        .saturating_add((header(0) as usize).saturating_mul(64))
+        .min(payload.len());
+    let magic = payload[..scan]
+        .windows(4)
+        .position(|window| window == b"WZSS")
+        .ok_or_else(|| UnityError::Format("WZSS magic 不存在".into()))?;
     let count = header(7) as usize;
     let offset = header(8) as usize;
     let rect_bytes = count
@@ -127,8 +172,9 @@ pub fn parse_wzss(payload: &[u8]) -> Result<WzssIndex> {
         });
     }
 
-    let frame_rects = parse_frame_rects(payload, magic, &header, count)?;
-    let (uol_links, alias_frames) = parse_uol_links(payload, magic, &header, &frame_rects)?;
+    let page_map = parse_page_map(payload, magic, &header)?;
+    let frames = parse_frames(payload, magic, &header, count, page_map.len())?;
+    let (uol_links, alias_frames) = parse_uol_links(payload, magic, &header, frames.len())?;
     let node_keys = read_string_pool(
         payload,
         magic,
@@ -149,8 +195,9 @@ pub fn parse_wzss(payload: &[u8]) -> Result<WzssIndex> {
         rects,
         uol_links,
         node_keys,
-        frame_rects,
+        frames,
         alias_frames,
+        page_map,
     })
 }
 
@@ -162,7 +209,7 @@ fn parse_uol_links(
     payload: &[u8],
     magic: usize,
     header: &impl Fn(usize) -> u32,
-    frame_rects: &[usize],
+    frame_count: usize,
 ) -> Result<(Vec<WzssUolLink>, AliasFrames)> {
     let string_count = header(2) as usize;
     let strings = read_string_pool(
@@ -205,15 +252,14 @@ fn parse_uol_links(
         let frame_index =
             i32::from_le_bytes(payload[position + 12..position + 16].try_into().unwrap());
         // frame_count 本身是「空圖片」sentinel，超過才算越界。
-        if frame_index < 0 || frame_index as usize > frame_rects.len() {
+        if frame_index < 0 || frame_index as usize > frame_count {
             return Err(UnityError::Format(format!(
-                "WZSS link frame 索引越界: {frame_index}/{}",
-                frame_rects.len()
+                "WZSS link frame 索引越界: {frame_index}/{frame_count}"
             )));
         }
-        let frame = (frame_index as usize) < frame_rects.len();
+        let frame = ((frame_index as usize) < frame_count).then_some(frame_index as usize);
         if slot >= 0 {
-            aliases.push((slot as usize, frame.then_some(frame_index as usize)));
+            aliases.push((slot as usize, frame));
         }
         // -1 是「相同圖片去重」記錄，只有非負值才引用上面的 UOL 字串池。
         if string_index < 0 {
@@ -227,18 +273,60 @@ fn parse_uol_links(
         };
         links.push(WzssUolLink {
             uol: uol.clone(),
-            rect_index: frame_rects.get(frame_index as usize).copied(),
+            frame_index: frame,
         });
     }
     Ok((links, aliases))
 }
 
-fn parse_frame_rects(
+/// 讀 `WZSS` magic 之後的頁對照表：magic + 4（magic）+ 4（版本 = 4）起，
+/// `header[0]` 個 u32，第 i 個是「WZSS 內部頁 i」對應的 atlas 檔名頁號。
+///
+/// 這張表是必要的：atlas 頁的檔名 `_N` 編號與 WZSS 內部頁號是兩套獨立編號，
+/// 實測常常不同（`Skill/232` → [3,4,2,1,0]），忽略它會整頁切錯圖。
+fn parse_page_map(
+    payload: &[u8],
+    magic: usize,
+    header: &impl Fn(usize) -> u32,
+) -> Result<Vec<usize>> {
+    let count = header(0) as usize;
+    if count == 0 || count > 4096 {
+        return Err(UnityError::Format(format!("WZSS atlas 頁數異常: {count}")));
+    }
+    let start = magic
+        .checked_add(8)
+        .ok_or_else(|| UnityError::Format("WZSS 頁對照表 offset 溢位".into()))?;
+    let end = count
+        .checked_mul(4)
+        .and_then(|bytes| start.checked_add(bytes))
+        .ok_or_else(|| UnityError::Format("WZSS 頁對照表大小溢位".into()))?;
+    if end > payload.len() {
+        return Err(UnityError::Format(format!(
+            "WZSS 頁對照表越界: count={count} len={}",
+            payload.len()
+        )));
+    }
+    let mut map = Vec::with_capacity(count);
+    for index in 0..count {
+        let position = start + index * 4;
+        let page = u32::from_le_bytes(payload[position..position + 4].try_into().unwrap()) as usize;
+        if page >= count {
+            return Err(UnityError::Format(format!(
+                "WZSS 頁對照表項越界: {page}/{count}"
+            )));
+        }
+        map.push(page);
+    }
+    Ok(map)
+}
+
+fn parse_frames(
     payload: &[u8],
     magic: usize,
     header: &impl Fn(usize) -> u32,
     rect_count: usize,
-) -> Result<Vec<usize>> {
+    page_count: usize,
+) -> Result<Vec<FrameEntry>> {
     let frame_count = header(9) as usize;
     if frame_count > 1_000_000 {
         return Err(UnityError::Format(format!(
@@ -261,12 +349,14 @@ fn parse_frame_rects(
         )));
     }
 
-    let mut frame_rects = Vec::with_capacity(frame_count);
+    let mut frames = Vec::with_capacity(frame_count);
     for index in 0..frame_count {
         let position = frame_start + index * 20;
-        // WzSpriteFrame 的第 4 個 i32 是 sprite rect 索引。frame 數可大於
+        // WzSpriteFrame 的第 3 個 i32 是 atlas 頁索引、第 4 個是 sprite rect
+        // 索引。rect 座標只在單一頁內有意義，兩者要一起用。frame 數可大於
         // rect 數（不同 frame 可共用同一張去重圖片），不能直接拿 frame
         // 編號去切 atlas。
+        let page = i32::from_le_bytes(payload[position + 8..position + 12].try_into().unwrap());
         let rect_index =
             i32::from_le_bytes(payload[position + 12..position + 16].try_into().unwrap());
         if rect_index < 0 || rect_index as usize >= rect_count {
@@ -274,9 +364,17 @@ fn parse_frame_rects(
                 "WZSS frame 的 rect 索引越界: {rect_index}/{rect_count}"
             )));
         }
-        frame_rects.push(rect_index as usize);
+        if page < 0 || page as usize >= page_count {
+            return Err(UnityError::Format(format!(
+                "WZSS frame 的 atlas 頁索引越界: {page}/{page_count}"
+            )));
+        }
+        frames.push(FrameEntry {
+            page: page as usize,
+            rect: rect_index as usize,
+        });
     }
-    Ok(frame_rects)
+    Ok(frames)
 }
 
 fn read_string_pool(
@@ -336,30 +434,30 @@ fn read_string_pool(
     Ok(strings)
 }
 
-/// 從 atlas（bottom-up RGBA）依 rect 切出 sprite 並翻正。
-pub fn cut_sprite(atlas: &[(u32, u32, Vec<u8>)], rect: WzssRect) -> Result<(u32, u32, Vec<u8>)> {
-    let mut y = u64::from(rect.y);
-    for (page_width, page_height, rgba) in atlas {
-        if y < u64::from(*page_height) {
-            let mut cropped = texture::crop_rgba(
-                *page_width,
-                *page_height,
-                rgba,
-                rect.x,
-                y as u32,
-                rect.w,
-                rect.h,
-            )?;
-            texture::flip_vertical(&mut cropped, rect.w, rect.h)?;
-            return Ok((rect.w, rect.h, cropped));
-        }
-        y -= u64::from(*page_height);
-    }
-    Err(UnityError::Format(format!(
-        "atlas 頁面不足：rect y={} 超出 {} 頁",
+/// 從 sprite 指定的 atlas 頁（bottom-up RGBA）依 rect 切出 sprite 並翻正。
+pub fn cut_sprite(atlas: &[AtlasPage], sprite: WzssSprite) -> Result<(u32, u32, Vec<u8>)> {
+    let page = atlas
+        .iter()
+        .find(|page| page.index as usize == sprite.page)
+        .ok_or_else(|| {
+            UnityError::Format(format!(
+                "atlas 缺少第 {} 頁（共 {} 頁）",
+                sprite.page,
+                atlas.len()
+            ))
+        })?;
+    let rect = sprite.rect;
+    let mut cropped = texture::crop_rgba(
+        page.width,
+        page.height,
+        &page.rgba,
+        rect.x,
         rect.y,
-        atlas.len()
-    )))
+        rect.w,
+        rect.h,
+    )?;
+    texture::flip_vertical(&mut cropped, rect.w, rect.h)?;
+    Ok((rect.w, rect.h, cropped))
 }
 
 #[cfg(test)]
@@ -399,54 +497,149 @@ mod tests {
             .collect();
         keyed.sort();
 
-        let mut payload = vec![0u8; MAGIC + 216];
+        let mut payload = vec![0u8; MAGIC + 232];
         let set_header = |payload: &mut Vec<u8>, index: usize, value: u32| {
             payload[index * 4..index * 4 + 4].copy_from_slice(&value.to_le_bytes());
         };
-        set_header(&mut payload, 0, 1); // version
+        set_header(&mut payload, 0, 3); // atlas 頁數
         set_header(&mut payload, 7, 2); // rect count
-        set_header(&mut payload, 8, 16); // rect data
+        set_header(&mut payload, 8, 32); // rect data
         set_header(&mut payload, 9, 2); // frame count
-        set_header(&mut payload, 10, 48); // frame data
+        set_header(&mut payload, 10, 64); // frame data
         set_header(&mut payload, 11, 1); // link count
-        set_header(&mut payload, 12, 88); // link data
+        set_header(&mut payload, 12, 104); // link data
         set_header(&mut payload, 13, 3); // 節點鍵數
-        set_header(&mut payload, 14, 120); // 鍵 blob
-        set_header(&mut payload, 15, 104); // 鍵 offset 表
+        set_header(&mut payload, 14, 136); // 鍵 blob
+        set_header(&mut payload, 15, 120); // 鍵 offset 表
         set_header(&mut payload, 19, PATH.len() as u32);
         payload[80..80 + PATH.len()].copy_from_slice(PATH.as_bytes());
         payload[MAGIC..MAGIC + 4].copy_from_slice(b"WZSS");
+        payload[MAGIC + 4..MAGIC + 8].copy_from_slice(&4u32.to_le_bytes()); // 版本
+                                                                            // 頁對照表：WZSS 頁 0/1/2 → 檔名頁 1/2/0。
+        for (wzss_page, file_page) in [1u32, 2, 0].into_iter().enumerate() {
+            let position = MAGIC + 8 + wzss_page * 4;
+            payload[position..position + 4].copy_from_slice(&file_page.to_le_bytes());
+        }
 
         for (index, rect) in [[0u32, 0, 10, 10], [16, 0, 20, 20]].into_iter().enumerate() {
             for (field, value) in rect.into_iter().enumerate() {
-                let position = MAGIC + 16 + index * 16 + field * 4;
+                let position = MAGIC + 32 + index * 16 + field * 4;
                 payload[position..position + 4].copy_from_slice(&value.to_le_bytes());
             }
         }
-        // frame 0 → rect 1、frame 1 → rect 0（刻意非恆等）。
-        for (frame, rect) in [1i32, 0].into_iter().enumerate() {
-            let position = MAGIC + 48 + frame * 20 + 12;
-            payload[position..position + 4].copy_from_slice(&rect.to_le_bytes());
+        // frame 0 → WZSS 頁 2 的 rect 1、frame 1 → WZSS 頁 0 的 rect 0（刻意非恆等）。
+        for (frame, (page, rect)) in [(2i32, 1i32), (0, 0)].into_iter().enumerate() {
+            let position = MAGIC + 64 + frame * 20 + 8;
+            payload[position..position + 4].copy_from_slice(&page.to_le_bytes());
+            payload[position + 4..position + 8].copy_from_slice(&rect.to_le_bytes());
         }
         // 別名槽 2（字串索引 -1 = 重複圖）→ frame 0。
-        payload[MAGIC + 88..MAGIC + 92].copy_from_slice(&2i32.to_le_bytes());
-        payload[MAGIC + 92..MAGIC + 96].copy_from_slice(&(-1i32).to_le_bytes());
-        payload[MAGIC + 100..MAGIC + 104].copy_from_slice(&0i32.to_le_bytes());
+        payload[MAGIC + 104..MAGIC + 108].copy_from_slice(&2i32.to_le_bytes());
+        payload[MAGIC + 108..MAGIC + 112].copy_from_slice(&(-1i32).to_le_bytes());
+        payload[MAGIC + 116..MAGIC + 120].copy_from_slice(&0i32.to_le_bytes());
         for index in 0..=3 {
-            let position = MAGIC + 104 + index * 4;
+            let position = MAGIC + 120 + index * 4;
             payload[position..position + 4].copy_from_slice(&((index as u32) * 32).to_le_bytes());
         }
         for (index, (key, _)) in keyed.iter().enumerate() {
-            let position = MAGIC + 120 + index * 32;
+            let position = MAGIC + 136 + index * 32;
             payload[position..position + 32].copy_from_slice(key.as_bytes());
         }
 
         let parsed = parse_wzss(&payload).unwrap();
         assert_eq!(parsed.path, PATH);
         // 槽 0/1 是 item（槽 i ↔ frame i），槽 2 走別名表回到 frame 0。
-        assert_eq!(parsed.rect_index_for_node(keyed[0].1), Some(1));
-        assert_eq!(parsed.rect_index_for_node(keyed[1].1), Some(0));
-        assert_eq!(parsed.rect_index_for_node(keyed[2].1), Some(1));
-        assert_eq!(parsed.rect_index_for_node("not/in/pool"), None);
+        assert_eq!(parsed.frame_index_for_node(keyed[0].1), Some(0));
+        assert_eq!(parsed.frame_index_for_node(keyed[1].1), Some(1));
+        assert_eq!(parsed.frame_index_for_node(keyed[2].1), Some(0));
+        assert_eq!(parsed.frame_index_for_node("not/in/pool"), None);
+        // frame → (atlas 頁, 頁內 rect)：頁號要經過對照表換算成檔名頁號，
+        // 否則會切到別頁。WZSS 頁 2 → 檔名頁 0、WZSS 頁 0 → 檔名頁 1。
+        assert_eq!(
+            parsed.sprite_for_frame(0),
+            Some(WzssSprite {
+                page: 0,
+                rect: WzssRect {
+                    x: 16,
+                    y: 0,
+                    w: 20,
+                    h: 20
+                },
+            })
+        );
+        assert_eq!(
+            parsed.sprite_for_frame(1),
+            Some(WzssSprite {
+                page: 1,
+                rect: WzssRect {
+                    x: 0,
+                    y: 0,
+                    w: 10,
+                    h: 10
+                },
+            })
+        );
+    }
+
+    /// 頁數多時 magic 會被 GUID 清單推到 1KB 以外（實測 `Mob/8830000` 28 頁、
+    /// magic 在 1332），掃描窗必須跟著頁數放寬。
+    #[test]
+    fn magic_beyond_one_kilobyte_is_still_found() {
+        const MAGIC: usize = 1400;
+        let mut payload = vec![0u8; MAGIC + 160];
+        let mut set_header = |index: usize, value: u32| {
+            payload[index * 4..index * 4 + 4].copy_from_slice(&value.to_le_bytes());
+        };
+        set_header(0, 28); // atlas 頁數
+        set_header(7, 0); // rect count
+        set_header(8, 32); // rect data
+        set_header(9, 0); // frame count
+        set_header(10, 32); // frame data
+        set_header(19, 0); // path 長度
+        payload[MAGIC..MAGIC + 4].copy_from_slice(b"WZSS");
+        // 頁對照表：28 個 u32，恆等即可。
+        for page in 0..28u32 {
+            let position = MAGIC + 8 + page as usize * 4;
+            payload[position..position + 4].copy_from_slice(&page.to_le_bytes());
+        }
+        let parsed = parse_wzss(&payload).expect("magic 應該要找得到");
+        assert_eq!(parsed.rects.len(), 0);
+    }
+
+    /// atlas 頁號決定切哪一頁；只有位置對得上的那頁會被裁切。
+    #[test]
+    fn cut_sprite_uses_the_frame_page() {
+        let solid = |value: u8| AtlasPage {
+            index: 0,
+            width: 2,
+            height: 2,
+            rgba: vec![value; 2 * 2 * 4],
+        };
+        let pages = vec![
+            AtlasPage {
+                index: 0,
+                ..solid(0x11)
+            },
+            AtlasPage {
+                index: 1,
+                ..solid(0x22)
+            },
+        ];
+        let sprite = WzssSprite {
+            page: 1,
+            rect: WzssRect {
+                x: 0,
+                y: 0,
+                w: 1,
+                h: 1,
+            },
+        };
+        let (width, height, rgba) = cut_sprite(&pages, sprite).unwrap();
+        assert_eq!((width, height), (1, 1));
+        assert_eq!(rgba, vec![0x22; 4]);
+
+        // 缺頁時明確失敗，不會默默切到第 0 頁。
+        let missing = WzssSprite { page: 5, ..sprite };
+        assert!(cut_sprite(&pages, missing).is_err());
     }
 }

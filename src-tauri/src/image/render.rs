@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::catalog::{split_img_prefix, CatalogError, DataService, EntryLocation, Result};
 use crate::unity::{objects, texture, UnityError};
 
-use super::{cut_sprite, parse_wzss, SetSpriteEntry, SheetEntry, WzssUolLink};
+use super::{cut_sprite, parse_wzss, AtlasPage, SetSpriteEntry, SheetEntry, WzssUolLink};
 
 impl DataService {
     /// 讀取 EntryLocation 指向的物件 bytes。
@@ -137,7 +137,7 @@ impl DataService {
         let mut frame = if inner.is_empty() {
             None
         } else {
-            wzss.rect_index_for_node(inner)
+            wzss.frame_index_for_node(inner)
         };
         if frame.is_none() {
             if per_img && !inner.is_empty() {
@@ -148,31 +148,50 @@ impl DataService {
             }
         }
 
+        // frame 只需要它所在的那一頁；其餘頁不必解碼。
+        let wanted_page = frame.and_then(|index| wzss.sprite_for_frame(index).map(|s| s.page));
         let mut pages = Vec::new();
-        if frame.is_some() || !entry.atlas_pages.is_empty() {
-            for (_, loc) in &entry.atlas_pages {
-                let data = self.read_entry(loc)?;
-                let texture_info = parse_texture2d_le(&data)?;
-                let bundle = self
-                    .bundles
-                    .get(loc.bundle_index as usize)
-                    .ok_or_else(|| CatalogError::CacheInvalid("bundle index 越界".into()))?;
-                let rgba =
-                    texture::fetch_pixels(bundle, loc.node_index as usize, &texture_info, &data)?;
-                pages.push((texture_info.width as u32, texture_info.height as u32, rgba));
+        for (page, loc) in &entry.atlas_pages {
+            let needed = match wanted_page {
+                Some(wanted) => *page as usize == wanted,
+                // 沒有 frame 時只有 img 根會用到第一頁。
+                None => inner.is_empty() && pages.is_empty(),
+            };
+            if !needed {
+                continue;
             }
+            let data = self.read_entry(loc)?;
+            let texture_info = parse_texture2d_le(&data)?;
+            let bundle = self
+                .bundles
+                .get(loc.bundle_index as usize)
+                .ok_or_else(|| CatalogError::CacheInvalid("bundle index 越界".into()))?;
+            let rgba =
+                texture::fetch_pixels(bundle, loc.node_index as usize, &texture_info, &data)?;
+            pages.push(AtlasPage {
+                index: *page,
+                width: texture_info.width as u32,
+                height: texture_info.height as u32,
+                rgba,
+            });
         }
 
-        if let (Some(frame_index), true) = (frame, !pages.is_empty()) {
-            if let Some(rect) = wzss.rects.get(frame_index).copied() {
-                let (width, height, rgba) = cut_sprite(&pages, rect)?;
+        if let Some(frame_index) = frame {
+            if let Some(sprite) = wzss.sprite_for_frame(frame_index) {
+                let (width, height, rgba) = cut_sprite(&pages, sprite)?;
                 return texture::to_png(width, height, &rgba).map_err(CatalogError::Unity);
             }
         }
         if inner.is_empty() {
-            let Some((width, height, mut rgba)) = pages.into_iter().next() else {
+            let Some(page) = pages.into_iter().next() else {
                 return Err(UnityError::Format("spritesheet 無 atlas 頁".into()).into());
             };
+            let AtlasPage {
+                width,
+                height,
+                mut rgba,
+                ..
+            } = page;
             texture::flip_vertical(&mut rgba, width, height)?;
             return Ok(texture::to_png(width, height, &rgba)?);
         }
@@ -293,7 +312,7 @@ fn infer_frame_from_uol(
         frames_by_uol
             .entry(link.uol.as_str())
             .or_default()
-            .insert(link.rect_index);
+            .insert(link.frame_index);
     }
 
     fn walk(
@@ -413,11 +432,11 @@ mod tests {
         let links = vec![
             WzssUolLink {
                 uol: "../../default/default".into(),
-                rect_index: Some(7),
+                frame_index: Some(7),
             },
             WzssUolLink {
                 uol: "../../default/default".into(),
-                rect_index: Some(7),
+                frame_index: Some(7),
             },
         ];
         assert_eq!(
@@ -429,7 +448,7 @@ mod tests {
             links[0].clone(),
             WzssUolLink {
                 uol: "../../default/default".into(),
-                rect_index: Some(3),
+                frame_index: Some(3),
             },
         ];
         assert_eq!(
