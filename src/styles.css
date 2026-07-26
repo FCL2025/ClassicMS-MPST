@@ -837,7 +837,7 @@ textarea:focus-visible,
   gap: 10px;
 }
 
-/* ── 裝備 tooltip（楓谷遊戲內風格，對齊 MPST ItemTooltipCard） ─────────── */
+/* ── 裝備 tooltip（中性深灰黑配色 + 打光／霧面玻璃質感，對齊 MPST ItemTooltipCard 結構） */
 
 .item-tooltip {
   display: grid;
@@ -846,13 +846,26 @@ textarea:focus-visible,
   gap: 0;
   justify-self: start;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, #7f8cff, var(--border-strong) 45%);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, rgba(16, 22, 48, 0.97), rgba(8, 12, 30, 0.97));
-  color: #f4f6ff;
+  background:
+    radial-gradient(
+      130% 85% at 50% -10%,
+      color-mix(in srgb, var(--text-strong) 9%, transparent),
+      transparent 55%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface-raised) 88%, transparent),
+      color-mix(in srgb, var(--surface) 88%, transparent)
+    );
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--text-strong) 10%, transparent),
+    var(--shadow);
+  backdrop-filter: blur(10px);
+  color: var(--text);
   font-size: 0.78rem;
   line-height: 1.45;
-  text-shadow: 0 1px 1px rgb(0 0 0 / 55%);
 }
 
 .item-tooltip-header {
@@ -864,21 +877,22 @@ textarea:focus-visible,
 }
 
 .item-tooltip-id {
-  color: #9aa3c7;
+  color: var(--muted);
   font-family: "Cascadia Mono", Consolas, monospace;
   font-size: 0.66rem;
 }
 
 .item-tooltip-header h3 {
   margin: 0;
-  color: #ffd94d;
+  color: var(--text-strong);
   font-size: 0.92rem;
   font-weight: 800;
+  text-shadow: 0 0 14px color-mix(in srgb, var(--text-strong) 22%, transparent);
 }
 
 .item-tooltip-attributes {
   margin: 0;
-  color: #7ee787;
+  color: var(--warning);
   font-size: 0.7rem;
 }
 
@@ -895,11 +909,16 @@ textarea:focus-visible,
   width: 72px;
   height: 72px;
   place-items: center;
-  border: 1px solid rgb(127 140 255 / 35%);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background:
-    radial-gradient(circle at 50% 42%, rgb(127 140 255 / 22%), transparent 70%),
-    rgb(5 8 20 / 65%);
+    radial-gradient(
+      circle at 50% 42%,
+      color-mix(in srgb, var(--text-strong) 12%, transparent),
+      transparent 70%
+    ),
+    var(--panel);
+  box-shadow: inset 0 1px 3px rgb(0 0 0 / 18%);
 }
 
 .item-tooltip-icon-frame img {
@@ -909,7 +928,7 @@ textarea:focus-visible,
 }
 
 .item-tooltip-icon-fallback {
-  color: #9aa3c7;
+  color: var(--muted);
   font-family: "Cascadia Mono", Consolas, monospace;
   font-size: 0.62rem;
 }
@@ -941,7 +960,7 @@ textarea:focus-visible,
 
 .item-tooltip-req dt {
   flex: 0 0 auto;
-  color: #9aa3c7;
+  color: var(--muted);
   font-size: 0.62rem;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -957,15 +976,15 @@ textarea:focus-visible,
 }
 
 .item-tooltip-req.is-active dd {
-  color: #ffd94d;
+  color: var(--text-strong);
 }
 
 .item-tooltip-req.is-level dd {
-  color: #ff8a5c;
+  color: var(--warning);
 }
 
 .item-tooltip-req.is-zero dd {
-  color: #6b7398;
+  color: var(--subtle);
 }
 
 .item-tooltip-jobs {
@@ -978,18 +997,23 @@ textarea:focus-visible,
 }
 
 .item-tooltip-jobs .is-enabled {
-  color: #f4f6ff;
+  color: var(--text-strong);
   font-weight: 700;
 }
 
 .item-tooltip-jobs .is-disabled {
-  color: #565e84;
+  color: var(--subtle);
 }
 
 .item-tooltip-divider {
   height: 1px;
   margin: 0 10px;
-  background: linear-gradient(90deg, transparent, rgb(127 140 255 / 45%), transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--text-strong) 32%, transparent),
+    transparent
+  );
 }
 
 .item-tooltip-details {
@@ -1004,26 +1028,26 @@ textarea:focus-visible,
 }
 
 .item-tooltip-line.is-full {
-  color: #9ecbff;
+  color: var(--muted);
 }
 
 .item-tooltip-label {
-  color: #c9d1f2;
+  color: var(--muted);
 }
 
 .item-tooltip-value {
-  color: #ffd94d;
+  color: var(--text-strong);
   font-variant-numeric: tabular-nums;
 }
 
 .item-tooltip-line.is-accent .item-tooltip-label,
 .item-tooltip-line.is-accent .item-tooltip-value {
-  color: #7ee787;
+  color: var(--warning);
 }
 
 .item-tooltip-flavor {
   padding: 7px 12px 9px;
-  color: #b7c0e6;
+  color: var(--muted);
   font-size: 0.72rem;
 }
 
