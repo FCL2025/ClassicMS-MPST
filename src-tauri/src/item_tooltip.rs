@@ -63,7 +63,7 @@ pub struct ItemTooltip {
     pub title: String,
     pub description: Option<String>,
     pub category_line: String,
-    /// `info/icon` 的 PNG base64；取圖失敗時為 None。
+    /// 圖示的 PNG base64：`info/icon`，髮型/臉型則是預設外觀圖；取圖失敗時為 None。
     pub icon_base64: Option<String>,
     pub required_level: i64,
     pub required_str: i64,
@@ -103,9 +103,7 @@ impl DataService {
             _ => {}
         }
 
-        let icon_base64 = self
-            .get_image(&format!("{img_path}/info/icon"))?
-            .map(|png| base64::engine::general_purpose::STANDARD.encode(png));
+        let icon_base64 = self.tooltip_icon(&img_path, &item_id, &category_hint)?;
 
         let category_line = gear_category_line(&item_id, &category_hint);
         let attack_speed_label = prop_i64(info, "attackSpeed").map(attack_speed_label);
@@ -129,6 +127,34 @@ impl DataService {
             scroll_count,
             stat_lines: gear_stat_lines(info),
         }))
+    }
+
+    /// 取 tooltip 圖示：一般裝備用 `info/icon`；髮型/臉型沒有 icon，
+    /// 改用預設外觀圖（`default/hairOverHead` / `default/face`）。
+    fn tooltip_icon(
+        &self,
+        img_path: &str,
+        item_id: &str,
+        category_hint: &str,
+    ) -> Result<Option<String>> {
+        let encode = |png: Vec<u8>| base64::engine::general_purpose::STANDARD.encode(png);
+        if let Some(png) = self.get_image(&format!("{img_path}/info/icon"))? {
+            return Ok(Some(encode(png)));
+        }
+        let inner = match category_hint.to_lowercase().as_str() {
+            "hair" => Some("default/hairOverHead"),
+            "face" => Some("default/face"),
+            // Character 直屬的 0002xxxx（臉型）/0003~0005（髮型）。
+            _ => match item_id.parse::<u32>().unwrap_or(0) / 10000 {
+                2 => Some("default/face"),
+                3..=5 => Some("default/hairOverHead"),
+                _ => None,
+            },
+        };
+        match inner {
+            Some(inner) => Ok(self.get_image(&format!("{img_path}/{inner}"))?.map(encode)),
+            None => Ok(None),
+        }
     }
 
     /// 把任意路徑收斂成裝備 img 根路徑；順便回傳分類提示（目錄名）。

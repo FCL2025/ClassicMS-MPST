@@ -433,6 +433,28 @@ pub struct IndexChild {
     pub img_count: usize,
 }
 
+/// 節點名比較：純數字名依數值排最前（0~9），其餘不分大小寫依字母（A~Z）。
+fn cmp_node_names(a: &str, b: &str) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    match (numeric_node_name(a), numeric_node_name(b)) {
+        (Some(x), Some(y)) => x.cmp(&y).then_with(|| a.cmp(b)),
+        (Some(_), None) => Ordering::Less,
+        (None, Some(_)) => Ordering::Greater,
+        (None, None) => a
+            .to_lowercase()
+            .cmp(&b.to_lowercase())
+            .then_with(|| a.cmp(b)),
+    }
+}
+
+/// 純數字節點名轉成數值；非純數字回 None。
+fn numeric_node_name(name: &str) -> Option<u64> {
+    if name.is_empty() || !name.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    name.parse().ok()
+}
+
 /// 把 container 路徑正規化成索引鍵；不屬於 json / 聲音資產的回 None。
 fn normalize_container_path(path: &str) -> Option<String> {
     let lower = path.to_lowercase();
@@ -656,9 +678,11 @@ impl DataService {
         } else {
             format!("{img_key}/{inner}")
         };
-        Ok(node
-            .children
-            .iter()
+        // 節點名依 0~9 → A~Z 排序（純數字名依數值排最前，其餘不分大小寫依字母）。
+        let mut children: Vec<&WzNode> = node.children.iter().collect();
+        children.sort_by(|a, b| cmp_node_names(&a.name, &b.name));
+        Ok(children
+            .into_iter()
             .map(|c| ChildEntry::Node {
                 name: c.name.clone(),
                 path: format!("{base}/{}", c.name),
