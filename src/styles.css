@@ -1634,32 +1634,82 @@ textarea:focus-visible,
   line-height: 1.7;
 }
 
-/* ── 商城（Etc/TW/Commodity）檢視 ───────────────────────────── */
+/* ── 商城（Etc/TW/Commodity）檢視：經典楓之谷視窗風格 ───────────── */
+/* 邊框素材由 classicFrame.ts 從遊戲 UI/UIWindow/Quest/backgrnd 九宮格裁出；
+   素材不可用時退回素色卡片（無 .has-frame）。 */
+
+.commodity-window {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+/* 九宮格：上 17（標題列）/ 左右 7 / 下 27（底邊橫條），fill 為白底。 */
+.commodity-window.has-frame {
+  border: 7px solid transparent;
+  border-width: 17px 7px 27px;
+  border-image-slice: 17 7 27 7 fill;
+  border-image-repeat: stretch;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: 0 2px 6px rgba(15, 35, 55, 0.35);
+}
+
+/* 標題列：蓋在 border-image 的上緣（負 top 對齊 17px 標題帶）。 */
+.commodity-window-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: -15px -4px 0;
+  height: 15px;
+  padding: 0 2px;
+  color: #12283f;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  user-select: none;
+}
+
+.commodity-window:not(.has-frame) .commodity-window-title {
+  margin: 0;
+  height: auto;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-strong);
+}
+
+.commodity-title-btn {
+  flex: 0 0 auto;
+  border: 1px solid #41618a;
+  border-radius: 3px;
+  background: linear-gradient(#d4e4f3, #92b2cd);
+  color: #12314e;
+  padding: 0 6px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 13px;
+}
+
+.commodity-title-btn:hover {
+  background: linear-gradient(#e4f0fb, #a5c2da);
+}
+
+.commodity-window:not(.has-frame) .commodity-title-btn {
+  padding: 3px 8px;
+  font-size: 0.66rem;
+  line-height: normal;
+}
 
 .commodity-status {
   margin: 0;
   padding: 12px;
-  color: var(--muted);
+  color: #5a6b7d;
   font-size: 0.78rem;
-}
-
-.commodity-card .find-hint,
-.commodity-raw-bar .find-hint {
-  flex: 0 0 auto;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--button-bg);
-  color: var(--muted);
-  padding: 3px 8px;
-  font-size: 0.66rem;
-  font-weight: 700;
-}
-
-.commodity-card .find-hint:hover,
-.commodity-raw-bar .find-hint:hover {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--text-strong);
 }
 
 .commodity-raw-stack {
@@ -1673,65 +1723,93 @@ textarea:focus-visible,
   justify-content: flex-end;
 }
 
-.commodity-tabs,
-.commodity-subtabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 8px 9px 0;
-}
-
-.commodity-subtabs {
-  padding-top: 6px;
-}
-
-.commodity-tabs button,
-.commodity-subtabs button {
+.commodity-raw-bar .find-hint {
+  flex: 0 0 auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--button-bg);
   color: var(--muted);
-  padding: 4px 10px;
-  font-size: 0.72rem;
+  padding: 3px 8px;
+  font-size: 0.66rem;
   font-weight: 700;
 }
 
-.commodity-subtabs button {
-  padding: 2px 8px;
-  font-size: 0.66rem;
-}
-
-.commodity-tabs button:hover,
-.commodity-subtabs button:hover {
-  border-color: var(--accent);
-  color: var(--text-strong);
-}
-
-.commodity-tabs button.is-active,
-.commodity-subtabs button.is-active {
+.commodity-raw-bar .find-hint:hover {
   border-color: var(--accent);
   background: var(--accent-soft);
   color: var(--text-strong);
 }
 
-/* 卡片寬度固定下限，每行數量依容器寬度自動換行 */
+/* 主分類頁籤：經典資料夾頁籤（選中者白底與內容相接）。 */
+.commodity-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 6px 8px 0;
+}
+
+.commodity-subtabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 4px 8px 0;
+}
+
+.commodity-tabs button,
+.commodity-subtabs button {
+  border: 1px solid #7d97b2;
+  border-radius: 4px 4px 0 0;
+  background: linear-gradient(#e8eef5, #c0d0e1);
+  color: #33475e;
+  padding: 3px 12px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.commodity-subtabs button {
+  padding: 2px 9px;
+  font-size: 10px;
+}
+
+.commodity-tabs button:hover,
+.commodity-subtabs button:hover {
+  background: linear-gradient(#f4f8fc, #cfdde9);
+  color: #12283f;
+}
+
+.commodity-tabs button.is-active,
+.commodity-subtabs button.is-active {
+  border-bottom-color: #fff;
+  background: linear-gradient(#ffffff, #eef4fa);
+  color: #0f2f52;
+}
+
+/* 卡片寬度固定下限，每行數量依容器寬度自動換行；
+   flex:1 讓 grid 吃滿視窗剩餘高度（列數由元件依高度動態決定）。 */
 .commodity-grid {
   display: grid;
+  flex: 1 1 auto;
   min-width: 0;
+  align-content: start;
   grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: 8px;
-  padding: 9px;
+  gap: 7px;
+  padding: 8px;
 }
 
 .commodity-item {
   display: flex;
+  height: 72px;
   min-width: 0;
   align-items: center;
   gap: 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  padding: 8px;
+  box-sizing: border-box;
+  border: 1px solid #9db1c5;
+  border-radius: 3px;
+  background: linear-gradient(#ffffff, #edf3f9);
+  box-shadow:
+    inset 0 1px 0 #ffffff,
+    0 1px 2px rgba(20, 40, 60, 0.18);
+  padding: 7px;
 }
 
 .commodity-item-icon {
@@ -1741,9 +1819,10 @@ textarea:focus-visible,
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface-raised);
+  border: 1px solid #8ba1b8;
+  border-radius: 3px;
+  background: #ffffff;
+  box-shadow: inset 1px 1px 3px rgba(30, 50, 70, 0.28);
 }
 
 .commodity-item-icon img {
@@ -1754,7 +1833,7 @@ textarea:focus-visible,
 }
 
 .commodity-item-noicon {
-  color: var(--muted);
+  color: #8ba1b8;
   font-size: 0.9rem;
   font-weight: 800;
 }
@@ -1770,14 +1849,15 @@ textarea:focus-visible,
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-  color: var(--text-strong);
+  color: #16324e;
   font-size: 0.76rem;
   line-height: 1.35;
 }
 
 .commodity-item-price {
-  color: var(--muted);
+  color: #8a6d1f;
   font-size: 0.7rem;
+  font-weight: 700;
 }
 
 .commodity-pager {
@@ -1785,29 +1865,30 @@ textarea:focus-visible,
   align-items: center;
   justify-content: center;
   gap: 4px;
-  padding: 0 9px 10px;
+  padding: 2px 8px 6px;
 }
 
 .commodity-pager button {
   min-width: 26px;
-  height: 24px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--button-bg);
-  color: var(--muted);
-  font-size: 0.7rem;
+  height: 22px;
+  border: 1px solid #41618a;
+  border-radius: 3px;
+  background: linear-gradient(#b9d2ea, #7ea3c6);
+  color: #ffffff;
+  font-size: 11px;
   font-weight: 700;
+  text-shadow: 0 1px 1px #2e4e74;
 }
 
 .commodity-pager button:not(:disabled):hover {
-  border-color: var(--accent);
-  color: var(--text-strong);
+  background: linear-gradient(#cde1f4, #8fb2d2);
 }
 
 .commodity-pager button.is-active {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--text-strong);
+  border-color: #a67c00;
+  background: linear-gradient(#ffd966, #f0b429);
+  color: #4a3000;
+  text-shadow: none;
 }
 
 .commodity-pager button:disabled {
@@ -1816,6 +1897,6 @@ textarea:focus-visible,
 }
 
 .commodity-pager-ellipsis {
-  color: var(--muted);
+  color: #5a6b7d;
   font-size: 0.7rem;
 }

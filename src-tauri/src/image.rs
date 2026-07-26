@@ -263,7 +263,8 @@ fn split_page_suffix(base: &str) -> Option<(&str, u32)> {
     Some((key, page))
 }
 
-/// spriteset .asset payload：(count, (string, pathID)×n) 或 (count, PPtr×n)。
+/// spriteset .asset payload：(count, (string, pathID)×n) 或 (count, PPtr×n)；
+/// 另有無 count 前綴、直接連排 PPtr 的佈局（UICashShop 等 spriteset）。
 /// 回傳 (名稱, sprite pathID) 列表；未命名條目名稱給 ""。
 fn parse_set_asset_payload(payload: &[u8]) -> Vec<(String, i64)> {
     let u32_at = |pos: usize| -> Option<u32> {
@@ -275,8 +276,14 @@ fn parse_set_asset_payload(payload: &[u8]) -> Vec<(String, i64)> {
     let Some(count) = u32_at(0) else {
         return vec![];
     };
-    if count == 0 || count > 100_000 {
+    if count > 100_000 {
         return vec![];
+    }
+    // count 為 0 有兩種可能：真的是空集合，或根本沒有 count 前綴、
+    // 開頭就是 PPtr（fileID = 0）。後者直接連排解析，撞到 pid = 0 或非零
+    // fileID 即停（這類 .asset 尾部常帶額外欄位，例如 canvas_event）。
+    if count == 0 {
+        return parse_bare_pptrs(payload);
     }
     // 判斷 named：count 之後的 u32 是合理字串長度且內容可印
     let named = match u32_at(4) {
@@ -347,6 +354,23 @@ fn parse_set_asset_payload(payload: &[u8]) -> Vec<(String, i64)> {
     out
 }
 
+/// 無 count 前綴的 PPtr 連排：(fileID i32, pathID i64)×n，
+/// fileID 非 0 或 pathID 為 0 時結束。
+fn parse_bare_pptrs(payload: &[u8]) -> Vec<(String, i64)> {
+    let mut out = Vec::new();
+    let mut pos = 0usize;
+    while let Some(end) = pos.checked_add(12).filter(|&end| end <= payload.len()) {
+        let file_id = i32::from_le_bytes(payload[pos..pos + 4].try_into().unwrap());
+        let pid = i64::from_le_bytes(payload[pos + 4..end].try_into().unwrap());
+        if file_id != 0 || pid == 0 {
+            break;
+        }
+        out.push((String::new(), pid));
+        pos = end;
+    }
+    out
+}
+
 mod render;
 
 #[cfg(test)]
@@ -383,6 +407,20 @@ mod tests {
         assert_eq!(out.len(), 2);
         assert_eq!(out[0], (String::new(), 111));
         assert_eq!(out[1], (String::new(), 222));
+    }
+
+    #[test]
+    fn test_parse_set_asset_bare_pptrs() {
+        // 無 count 前綴：直接 PPtr 連排，尾部帶非 PPtr 欄位（參考 canvas_event）。
+        // 尾部欄位可能被誤判成一筆多餘 PPtr，但該 pid 在物件表查無，
+        // 會在 collect_set 的 loc_of 階段被濾掉，這裡只斷言開頭正確。
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&0i32.to_le_bytes());
+        payload.extend_from_slice(&0x2fd527b174683368i64.to_le_bytes());
+        payload.extend_from_slice(&0i64.to_le_bytes());
+        payload.extend_from_slice(&1u32.to_le_bytes());
+        let out = parse_set_asset_payload(&payload);
+        assert_eq!(out.first(), Some(&(String::new(), 0x2fd527b174683368)));
     }
 
     #[test]

@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { getCommodityItems, type CommodityItem } from "../api";
+import { loadClassicFrame } from "./classicFrame";
 import { TextAssetCard } from "./NodeDetail";
 
-// 每頁道具數；卡片寬度固定，每行數量由 CSS grid 依視窗寬度自動換行。
+// 初次渲染、尚未量測前的暫用每頁道具數；之後由可用高度 × 欄數動態決定。
 const PAGE_SIZE = 12;
+// 卡片固定高 72px（見 .commodity-item）、grid 間距 7px，供列數估算。
+const CARD_ROW_PX = 72 + 7;
 
 // SN 前段是分類代碼：萬位以上是主分類、之後兩碼是子分類
 // （例如 110000000 → 主 11 子 0；92000000 → 主 9 子 20）。
@@ -74,6 +77,58 @@ export function CommodityShop({ text }: { text: string }) {
   const [main, setMain] = useState<number | null>(null);
   const [sub, setSub] = useState<number | null>(null);
   const [page, setPage] = useState(0);
+  const [frame, setFrame] = useState<string | null>(null);
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  // 視窗拉滿右半窗格的高度（px）；未量測前為 null（自然高度）。
+  const [fillHeight, setFillHeight] = useState<number | null>(null);
+  // 動態每頁數：欄數（量 grid 實際欄數）× 列數（依可用高度估算）。
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+
+  // 依窗格可用空間調整視窗高度與每頁筆數。每次渲染後量一次（setState 有守門，
+  // 值相同不會觸發重繪），另以 ResizeObserver 跟隨窗格尺寸變化。
+  useLayoutEffect(() => {
+    const section = sectionRef.current;
+    if (!section || !items) return;
+    const pane = section.closest(".app-right");
+    if (!pane) return;
+
+    const measure = () => {
+      const paneRect = pane.getBoundingClientRect();
+      const secTop = section.getBoundingClientRect().top;
+      // 12 = .app-right 的 padding-bottom。
+      const height = Math.max(240, Math.floor(paneRect.bottom - 12 - secTop));
+      setFillHeight((h) => (h === height ? h : height));
+
+      const grid = gridRef.current;
+      if (!grid) return;
+      const cols = Math.max(
+        1,
+        getComputedStyle(grid).gridTemplateColumns.split(" ").filter(Boolean).length,
+      );
+      const gridTop = grid.getBoundingClientRect().top;
+      // 分頁列約 30px + 視窗下框 27px + grid 下 padding 8px。
+      const availRows = paneRect.bottom - 12 - gridTop - 30 - 27 - 8;
+      const rows = Math.max(1, Math.floor(availRows / CARD_ROW_PX));
+      const next = cols * rows;
+      setPageSize((s) => (s === next ? s : next));
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(pane);
+    return () => observer.disconnect();
+  });
+
+  useEffect(() => {
+    let active = true;
+    loadClassicFrame().then((url) => {
+      if (active) setFrame(url);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -122,23 +177,28 @@ export function CommodityShop({ text }: { text: string }) {
   const subs = [...(groups.get(activeMain)?.keys() ?? [])].sort((a, b) => a - b);
   const activeSub = sub ?? subs[0];
   const visible = groups.get(activeMain)?.get(activeSub) ?? [];
-  const totalPages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(visible.length / pageSize));
   const currentPage = Math.min(page, totalPages - 1);
   const pageItems = visible.slice(
-    currentPage * PAGE_SIZE,
-    currentPage * PAGE_SIZE + PAGE_SIZE,
+    currentPage * pageSize,
+    currentPage * pageSize + pageSize,
   );
 
   return (
-    <section className="editor-card commodity-card">
-      <header className="editor-card-heading">
-        <div>
-          <strong>商城道具{items ? `（${items.length}）` : ""}</strong>
-        </div>
-        <button type="button" className="find-hint" onClick={() => setShowRaw(true)}>
+    <section
+      ref={sectionRef}
+      className={frame ? "commodity-window has-frame" : "commodity-window"}
+      style={{
+        ...(frame ? { borderImageSource: `url("${frame}")` } : undefined),
+        ...(fillHeight != null ? { height: fillHeight } : undefined),
+      }}
+    >
+      <div className="commodity-window-title">
+        <span>商城{items ? `（${items.length}）` : ""}</span>
+        <button type="button" className="commodity-title-btn" onClick={() => setShowRaw(true)}>
           原始 JSON
         </button>
-      </header>
+      </div>
 
       {error ? <p className="error commodity-status">{error}</p> : null}
       {!error && !items ? <p className="commodity-status">正在載入商城資料…</p> : null}
@@ -187,7 +247,7 @@ export function CommodityShop({ text }: { text: string }) {
           {pageItems.length === 0 ? (
             <p className="commodity-status">此分類沒有商品</p>
           ) : (
-            <div className="commodity-grid">
+            <div className="commodity-grid" ref={gridRef}>
               {pageItems.map((item) => (
                 <article className="commodity-item" key={item.sn} title={`道具代碼 ${item.itemId}`}>
                   <div className="commodity-item-icon">

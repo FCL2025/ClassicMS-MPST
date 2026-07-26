@@ -47,8 +47,9 @@ const JSON_PREFIX: &str = "assets/wzassets/json/";
 /// （副檔名只是名目——內容一律是 FSB5 封裝的 Vorbis。）
 const SOUND_PREFIX: &str = "assets/wzdata/sound/";
 const SOUND_SUFFIXES: [&str; 2] = [".mp3", ".wav"];
-/// 目前索引格式版本（Phase 4 加入圖片索引 → 2；加入聲音索引 → 4）。
-const CATALOG_VERSION: u32 = 4;
+/// 目前索引格式版本（Phase 4 加入圖片索引 → 2；加入聲音索引 → 4；
+/// spriteset 無 count 前綴的 PPtr 連排佈局 → 5）。
+const CATALOG_VERSION: u32 = 5;
 /// 索引只收這兩種副檔名的資產。
 const WZJSON_SUFFIX: &str = ".wzjson";
 const JSON_SUFFIX: &str = ".json";

@@ -37,6 +37,17 @@ impl DataService {
     }
 
     fn get_image_uncached(&self, path: &str) -> Result<Option<Vec<u8>>> {
+        // spriteset 素材（TW/UI/...、Common/UI/...）：不在 catalog.entries，
+        // 用 set_assets 的鍵做前綴比對，命中就以 m_Rect 切圖渲染。
+        if let Some((key, inner)) = split_set_asset_prefix(&self.catalog, path) {
+            let Some(asset) = self.catalog.image.set_assets.get(&key).cloned() else {
+                return Ok(None);
+            };
+            return match pick_set_sprite(&asset, &inner) {
+                Some(entry) => self.render_set_sprite(entry).map(Some),
+                None => Ok(None),
+            };
+        }
         let (img_key, inner) = match split_img_prefix(&self.catalog, path) {
             Some(parts) => parts,
             None => return Ok(None),
@@ -271,6 +282,28 @@ pub(super) fn sprite_rect_to_pixels(
         exact_pixel(rect.2, "width", false)?,
         exact_pixel(rect.3, "height", false)?,
     ))
+}
+
+/// 把 path 拆成 (set_asset 鍵, 內部 sprite 名)；找不到任何 set_asset 前綴回 None。
+/// 與 split_img_prefix 同邏輯，只是比對目標換成 image.set_assets。
+fn split_set_asset_prefix(
+    catalog: &crate::catalog::Catalog,
+    path: &str,
+) -> Option<(String, String)> {
+    let mut p = path;
+    loop {
+        if catalog.image.set_assets.contains_key(p) {
+            let inner = &path[p.len()..];
+            return Some((
+                p.to_string(),
+                inner.strip_prefix('/').unwrap_or(inner).to_string(),
+            ));
+        }
+        match p.rfind('/') {
+            Some(i) => p = &p[..i],
+            None => return None,
+        }
+    }
 }
 
 fn pick_set_sprite<'a>(
