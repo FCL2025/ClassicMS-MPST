@@ -15,6 +15,7 @@ import {
   typeLabel,
   type ItemTooltip as ItemTooltipData,
   type NodeDetail as Detail,
+  type Value,
 } from "../api";
 import { ImagePreview } from "./ImagePreview";
 import { ItemTooltip } from "./ItemTooltip";
@@ -76,6 +77,72 @@ function formatLevelDesc(
     .sort(([a], [b]) => Number(a) - Number(b))
     .map(([level, text]) => `Lv.${level} ${text}`);
   return lines.length > 0 ? lines.join("\n") : null;
+}
+
+interface SkillDelayInfo {
+  action: string;
+  totalDelay: number | null; // null = Character/00002000 查無此動作
+}
+
+// 從節點值取字串（action 一般是 Str，少數是 Uol 連結）。
+function stringValue(v: Value): string | null {
+  return v.type === "Str" || v.type === "Uol" ? v.value : null;
+}
+
+// 從節點值取數字（delay 一般是 Int）。
+function numericValue(v: Value): number | null {
+  switch (v.type) {
+    case "U8":
+    case "U16":
+    case "Int":
+    case "Double":
+      return v.value;
+    default:
+      return null;
+  }
+}
+
+// Character/00002000/<動作>/<影格>/delay 的 |delay| 加總；同一動作整個 session 只抓一次。
+const actionDelayCache = new Map<string, Promise<number | null>>();
+
+function loadActionDelay(action: string): Promise<number | null> {
+  let cached = actionDelayCache.get(action);
+  if (!cached) {
+    cached = (async () => {
+      try {
+        const actionNode = await getNode(`Character/00002000/${action}`);
+        const frames = actionNode.children
+          .map(([name]) => name)
+          .filter((name) => /^\d+$/.test(name));
+        const delays = await Promise.all(
+          frames.map((frame) =>
+            getNode(`Character/00002000/${action}/${frame}/delay`)
+              .then((node) => numericValue(node.value) ?? 0)
+              .catch(() => 0),
+          ),
+        );
+        return delays.reduce((sum, d) => sum + Math.abs(d), 0);
+      } catch {
+        return null;
+      }
+    })();
+    actionDelayCache.set(action, cached);
+  }
+  return cached;
+}
+
+// 技能的 action 節點：可能是字串值，或是子節點（0/1/...）各指一個動作名；取第一個。
+async function findSkillAction(skillPath: string): Promise<string | null> {
+  const actionNode = await getNode(`${skillPath}/action`).catch(() => null);
+  if (!actionNode) return null;
+  const direct = stringValue(actionNode.value);
+  if (direct) return direct;
+  for (const [name] of actionNode.children) {
+    const child = await getNode(`${skillPath}/action/${name}`).catch(() => null);
+    const value = child ? stringValue(child.value) : null;
+    if (value) return value;
+  }
+  return null;
 }
 
 // 唯讀 textarea，高度依內容自動撐開，不需要捲動或手動拖曳。
@@ -185,7 +252,6 @@ function TextAssetCard({ text }: { text: string }) {
       <header className="editor-card-heading">
         <div>
           <strong>TextAsset</strong>
-          <span>{text.length.toLocaleString()} 字元</span>
         </div>
         {findOpen ? (
           <div className="text-find-bar">
@@ -302,6 +368,32 @@ export function NodeDetail({
   const [imgNote, setImgNote] = useState<string | null>(null);
   const [tooltip, setTooltip] = useState<ItemTooltipData | null>(null);
   const [skillInfo, setSkillInfo] = useState<SkillStringInfo | null>(null);
+  const [skillDelay, setSkillDelay] = useState<SkillDelayInfo | null>(null);
+
+  // 技能延遲：技能代碼節點的 action → Character/00002000 對應動作的影格 delay 加總。
+  useEffect(() => {
+    const skillId = path ? skillIdFromPath(path) : null;
+    if (!path || !skillId) {
+      setSkillDelay(null);
+      return;
+    }
+    let active = true;
+    findSkillAction(path)
+      .then(async (action) => {
+        if (!action) {
+          if (active) setSkillDelay(null);
+          return;
+        }
+        const totalDelay = await loadActionDelay(action);
+        if (active) setSkillDelay({ action, totalDelay });
+      })
+      .catch(() => {
+        if (active) setSkillDelay(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [path]);
 
   // 技能名稱/描述：路徑剛好是技能代碼節點時，查 String/TW/Skill 的名稱表。
   useEffect(() => {
@@ -483,7 +575,6 @@ export function NodeDetail({
             <header className="editor-card-heading">
               <div>
                 <strong>節點屬性</strong>
-                <span>目前資料來源不會被修改</span>
               </div>
               <span className={`type-badge tag-${detail.type_tag}`}>
                 {typeLabel(detail.type_tag)}
@@ -511,12 +602,38 @@ export function NodeDetail({
             </div>
           </section>
 
+          {skillDelay ? (
+            <section className="editor-card skill-delay-card">
+              <header className="editor-card-heading">
+                <div>
+                  <strong>技能延遲</strong>
+                </div>
+              </header>
+              <div className="node-editor-form">
+                <label>
+                  <span>動作</span>
+                  <input readOnly value={skillDelay.action} />
+                </label>
+                <label>
+                  <span>總延遲</span>
+                  <input
+                    readOnly
+                    value={
+                      skillDelay.totalDelay != null
+                        ? `${skillDelay.totalDelay} ms`
+                        : "（查無動作節點）"
+                    }
+                  />
+                </label>
+              </div>
+            </section>
+          ) : null}
+
           {skillInfo ? (
             <section className="editor-card skill-info-card">
               <header className="editor-card-heading">
                 <div>
                   <strong>技能資訊</strong>
-                  <span>來源：String/TW/Skill</span>
                 </div>
               </header>
               <div className="node-editor-form">
@@ -543,7 +660,6 @@ export function NodeDetail({
               <header className="editor-card-heading">
                 <div>
                   <strong>聲音</strong>
-                  <span>Ogg Vorbis（由 FSB5 轉封裝）</span>
                 </div>
               </header>
               <AudioPlayer path={detail.path} />

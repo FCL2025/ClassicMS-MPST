@@ -1087,14 +1087,6 @@ textarea:focus-visible,
   font-size: 0.78rem;
 }
 
-.editor-card-heading span:not(.type-badge) {
-  overflow: hidden;
-  color: var(--subtle);
-  font-size: 0.65rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .node-editor-form {
   display: grid;
   min-width: 0;
