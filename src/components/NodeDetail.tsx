@@ -1,4 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   formatValue,
   getAudio,
@@ -81,6 +88,168 @@ function AutoTextarea({ value }: { value: string }) {
     el.style.height = `${el.scrollHeight}px`;
   }, [value]);
   return <textarea ref={ref} readOnly spellCheck={false} value={value} />;
+}
+
+// TextAsset 檢視器：高度撐到 .app-right 可視區底部，並支援 Ctrl+F 在內容裡搜尋
+// （Enter 下一筆、Shift+Enter 上一筆、Esc 關閉，命中筆會選取並捲到可視範圍）。
+function TextAssetCard({ text }: { text: string }) {
+  const areaRef = useRef<HTMLTextAreaElement>(null);
+  const findInputRef = useRef<HTMLInputElement>(null);
+  const [findOpen, setFindOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [matchIndex, setMatchIndex] = useState(0);
+
+  // 讓 textarea 底端對齊 .app-right 可視區底部（扣掉 12px padding），視窗縮放時重算。
+  useLayoutEffect(() => {
+    const el = areaRef.current;
+    const container = el?.closest(".app-right");
+    if (!el || !container) return;
+    const apply = () => {
+      const cRect = container.getBoundingClientRect();
+      const tRect = el.getBoundingClientRect();
+      const docTop = tRect.top - cRect.top + container.scrollTop;
+      const avail = container.clientHeight - docTop - 12;
+      el.style.height = `${Math.max(300, avail)}px`;
+    };
+    apply();
+    window.addEventListener("resize", apply);
+    return () => window.removeEventListener("resize", apply);
+  }, [text]);
+
+  const matches = useMemo(() => {
+    if (!query) return [] as number[];
+    const haystack = text.toLowerCase();
+    const needle = query.toLowerCase();
+    const out: number[] = [];
+    let i = haystack.indexOf(needle);
+    while (i !== -1) {
+      out.push(i);
+      i = haystack.indexOf(needle, i + 1);
+    }
+    return out;
+  }, [text, query]);
+
+  const jumpTo = useCallback(
+    (index: number, list: number[], focusArea: boolean) => {
+      const el = areaRef.current;
+      if (!el || list.length === 0) return;
+      const n = ((index % list.length) + list.length) % list.length;
+      setMatchIndex(n);
+      const start = list[n];
+      if (focusArea) el.focus();
+      el.setSelectionRange(start, start + query.length);
+      // 捲到命中位置：垂直依行號置中，水平依等寬字元寬推算。
+      const style = getComputedStyle(el);
+      const lineHeight = parseFloat(style.lineHeight) || 16;
+      const before = text.slice(0, start);
+      const line = (before.match(/\n/g) ?? []).length;
+      el.scrollTop = Math.max(0, line * lineHeight - el.clientHeight / 3);
+      const col = before.length - before.lastIndexOf("\n") - 1;
+      const ctx = document.createElement("canvas").getContext("2d");
+      if (ctx) {
+        ctx.font = style.font;
+        const charWidth = ctx.measureText("M").width;
+        el.scrollLeft = Math.max(0, col * charWidth - el.clientWidth / 3);
+      }
+    },
+    [text, query],
+  );
+
+  // 輸入關鍵字時跳到選取位置之後的第一筆（沒有就回第一筆）。
+  useEffect(() => {
+    if (!findOpen || matches.length === 0) {
+      setMatchIndex(0);
+      return;
+    }
+    const selStart = areaRef.current?.selectionStart ?? 0;
+    const idx = matches.findIndex((m) => m >= selStart);
+    jumpTo(idx === -1 ? 0 : idx, matches, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matches, findOpen]);
+
+  const openFind = useCallback(() => {
+    setFindOpen(true);
+    requestAnimationFrame(() => {
+      findInputRef.current?.focus();
+      findInputRef.current?.select();
+    });
+  }, []);
+
+  const closeFind = useCallback(() => {
+    setFindOpen(false);
+    areaRef.current?.focus();
+  }, []);
+
+  return (
+    <section className="editor-card text-editor-card">
+      <header className="editor-card-heading">
+        <div>
+          <strong>TextAsset</strong>
+          <span>{text.length.toLocaleString()} 字元</span>
+        </div>
+        {findOpen ? (
+          <div className="text-find-bar">
+            <input
+              ref={findInputRef}
+              type="text"
+              placeholder="搜尋內容…"
+              spellCheck={false}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  jumpTo(matchIndex + (e.shiftKey ? -1 : 1), matches, false);
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  closeFind();
+                }
+              }}
+            />
+            <span className="text-find-count">
+              {query ? `${matches.length > 0 ? matchIndex + 1 : 0} / ${matches.length}` : ""}
+            </span>
+            <button
+              type="button"
+              title="上一筆（Shift+Enter）"
+              disabled={matches.length === 0}
+              onClick={() => jumpTo(matchIndex - 1, matches, false)}
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              title="下一筆（Enter）"
+              disabled={matches.length === 0}
+              onClick={() => jumpTo(matchIndex + 1, matches, false)}
+            >
+              ↓
+            </button>
+            <button type="button" title="關閉（Esc）" onClick={closeFind}>
+              ✕
+            </button>
+          </div>
+        ) : (
+          <button type="button" className="find-hint" onClick={openFind}>
+            Ctrl+F 搜尋
+          </button>
+        )}
+      </header>
+      <textarea
+        ref={areaRef}
+        className="text-asset-editor"
+        readOnly
+        spellCheck={false}
+        value={text}
+        onKeyDown={(e) => {
+          if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+            e.preventDefault();
+            openFind();
+          }
+        }}
+      />
+    </section>
+  );
 }
 
 // AudioClip（type 83）：點開才向後端取 Ogg Vorbis，轉 blob URL 播放，卸載時釋放。
@@ -382,24 +551,7 @@ export function NodeDetail({
           ) : null}
 
           {detail.text_asset != null ? (
-            <section className="editor-card text-editor-card">
-              <header className="editor-card-heading">
-                <div>
-                  <strong>TextAsset</strong>
-                  <span>{detail.text_asset.length.toLocaleString()} 字元</span>
-                </div>
-              </header>
-              <textarea
-                className="text-asset-editor"
-                readOnly
-                spellCheck={false}
-                value={
-                  detail.text_asset.length > 20000
-                    ? `${detail.text_asset.slice(0, 20000)}\n…（內容過長，預覽已截斷）`
-                    : detail.text_asset
-                }
-              />
-            </section>
+            <TextAssetCard key={detail.path} text={detail.text_asset} />
           ) : null}
 
         </div>
