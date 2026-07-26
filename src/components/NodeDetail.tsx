@@ -7,12 +7,10 @@ import {
   useState,
 } from "react";
 import {
-  formatValue,
   getAudio,
   getImage,
   getItemTooltip,
   getNode,
-  typeLabel,
   type ItemTooltip as ItemTooltipData,
   type NodeDetail as Detail,
   type Value,
@@ -540,16 +538,14 @@ export function NodeDetail({
   if (!detail) return null;
 
   const isImageCapable = detail.value.type === "Canvas" || detail.value.type === "Uol";
-  const valueText = formatValue(detail.value);
   const showPreview = Boolean(imgUrl) || isImageCapable;
-  const useTextarea = valueText.includes("\n") || valueText.length > 120;
 
   return (
     <article className="node-detail-panel">
       <header className="detail-header">
         <div className="detail-heading">
           <p>節點檢視</p>
-          <h1 title={detail.name}>{detail.name}</h1>
+          <input readOnly value={detail.name} title={detail.name} />
         </div>
         <div className="detail-actions">
           <span className="readonly-badge">唯讀</span>
@@ -570,37 +566,6 @@ export function NodeDetail({
 
         <div className="detail-editor-stack">
           {tooltip ? <ItemTooltip details={tooltip} /> : null}
-
-          <section className="editor-card">
-            <header className="editor-card-heading">
-              <div>
-                <strong>節點屬性</strong>
-              </div>
-              <span className={`type-badge tag-${detail.type_tag}`}>
-                {typeLabel(detail.type_tag)}
-              </span>
-            </header>
-            <div className="node-editor-form">
-              <label>
-                <span>名稱</span>
-                <input readOnly value={detail.name} />
-              </label>
-              <label>
-                <span>型別</span>
-                <input readOnly value={`${typeLabel(detail.type_tag)} · ${detail.type_tag}`} />
-              </label>
-              {detail.value.type !== "SubTree" ? (
-                <label className="is-wide">
-                  <span>值</span>
-                  {useTextarea ? (
-                    <textarea readOnly spellCheck={false} value={valueText} />
-                  ) : (
-                    <input className="value-input" readOnly spellCheck={false} value={valueText} />
-                  )}
-                </label>
-              ) : null}
-            </div>
-          </section>
 
           {skillDelay ? (
             <section className="editor-card skill-delay-card">

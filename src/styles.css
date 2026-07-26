@@ -763,17 +763,16 @@ textarea:focus-visible,
 }
 
 .detail-heading {
-  display: grid;
+  display: flex;
+  flex: 1;
   min-width: 0;
-  gap: 1px;
-}
-
-.detail-heading p,
-.detail-heading h1 {
-  margin: 0;
+  align-items: center;
+  gap: 8px;
 }
 
 .detail-heading p {
+  flex: 0 0 auto;
+  margin: 0;
   color: var(--accent);
   font-size: 0.66rem;
   font-weight: 800;
@@ -781,14 +780,18 @@ textarea:focus-visible,
   text-transform: uppercase;
 }
 
-.detail-heading h1 {
-  overflow: hidden;
+.detail-heading input {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
   color: var(--text-strong);
+  padding: 7px 8px;
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 1rem;
-  line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 0.72rem;
+  cursor: text;
 }
 
 .detail-actions {
@@ -798,12 +801,11 @@ textarea:focus-visible,
   gap: 7px;
 }
 
-.readonly-badge,
-.type-badge {
+.readonly-badge {
   display: inline-grid;
   min-height: 20px;
   place-items: center;
-  border: 1px solid var(--border);
+  border: 1px dashed var(--border);
   border-radius: var(--radius-sm);
   background: var(--panel);
   color: var(--muted);
@@ -812,10 +814,6 @@ textarea:focus-visible,
   font-weight: 800;
   line-height: 1;
   white-space: nowrap;
-}
-
-.readonly-badge {
-  border-style: dashed;
 }
 
 .detail-workspace {
@@ -1239,32 +1237,6 @@ textarea:focus-visible,
 
 .text-find-bar button:disabled {
   color: var(--disabled);
-}
-
-.tag-18,
-.tag-19 {
-  border-color: color-mix(in srgb, var(--type-media), var(--border) 35%);
-  color: var(--type-media);
-}
-
-.tag-3,
-.tag-5,
-.tag-6,
-.tag-8,
-.tag-9,
-.tag-14 {
-  border-color: color-mix(in srgb, var(--type-numeric), var(--border) 35%);
-  color: var(--type-numeric);
-}
-
-.tag-11 {
-  border-color: color-mix(in srgb, var(--accent), var(--border) 35%);
-  color: var(--accent);
-}
-
-.tag-12 {
-  border-color: color-mix(in srgb, var(--warning), var(--border) 35%);
-  color: var(--warning);
 }
 
 /* ── Image editor preview ───────────────────────────────────── */
