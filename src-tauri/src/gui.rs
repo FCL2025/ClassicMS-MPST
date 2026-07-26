@@ -11,6 +11,7 @@ use serde::Serialize;
 use tauri::{Manager, State};
 
 use crate::catalog::{ChildEntry, DataService, NodeDetail, OpenInfo};
+use crate::commodity::CommodityItem;
 use crate::export::{ExportStats, FileExportResult};
 use crate::item_tooltip::ItemTooltip;
 
@@ -270,6 +271,19 @@ async fn get_item_tooltip(
     .await
 }
 
+/// 商城商品清單（Etc/TW/Commodity）：名稱與 icon 由後端聚合，一次拿完。
+#[tauri::command]
+async fn get_commodity_items(state: State<'_, AppState>) -> Result<Vec<CommodityItem>, String> {
+    let state = state.inner().clone();
+    blocking(move || {
+        let (service, _) = state.current_or_open(None)?;
+        service
+            .get_commodity_items()
+            .map_err(|error| error.to_string())
+    })
+    .await
+}
+
 #[tauri::command]
 async fn search_nodes(
     query: String,
@@ -353,6 +367,7 @@ pub fn run() {
             get_image,
             get_audio,
             get_item_tooltip,
+            get_commodity_items,
             search_nodes,
             export_subtree,
             export_file,

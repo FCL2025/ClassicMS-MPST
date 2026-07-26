@@ -87,6 +87,16 @@ export interface ExportStats {
   nodes: number;
 }
 
+/** 商城商品（對齊 commodity.rs 的 serde 輸出）。 */
+export interface CommodityItem {
+  sn: number;
+  itemId: number;
+  count: number;
+  price: number;
+  name: string | null;
+  iconBase64: string | null;
+}
+
 export type ExportFormat = "json" | "png" | "xml";
 
 export interface FileExportResult {
@@ -101,6 +111,7 @@ export const getImage = (path: string) => invoke<ImagePreviewResult | null>("get
 export const getAudio = (path: string) => invoke<AudioResult>("get_audio", { path });
 export const getItemTooltip = (path: string) =>
   invoke<ItemTooltip | null>("get_item_tooltip", { path });
+export const getCommodityItems = () => invoke<CommodityItem[]>("get_commodity_items");
 export const searchNodes = (query: string, limit = 200) =>
   invoke<string[]>("search_nodes", { query, limit });
 export const exportSubtree = (path: string) => invoke<ExportStats>("export_subtree", { path });

@@ -110,6 +110,16 @@ export interface ExportDialogOptions {
   extension: ExportFormat;
 }
 
+/** 商城商品（對齊 commodity.rs 的 serde 輸出）。 */
+export interface CommodityItem {
+  sn: number;
+  itemId: number;
+  count: number;
+  price: number;
+  name: string | null;
+  iconBase64: string | null;
+}
+
 // pickDataDirectory 與 openDataDir 之間的暫存:File 物件無法走字串路徑往返,
 // 所以選完資料夾先存在這裡,openDataDir 時餵給 Worker。
 let pendingPick: PickedFolder | null = null;
@@ -161,6 +171,8 @@ export const searchNodes = (query: string, limit = 200) =>
 
 export const getItemTooltip = (path: string) =>
   rpc<ItemTooltip | null>("getItemTooltip", path);
+
+export const getCommodityItems = () => rpc<CommodityItem[]>("getCommodityItems");
 
 interface WasmFileExport {
   filename: string;

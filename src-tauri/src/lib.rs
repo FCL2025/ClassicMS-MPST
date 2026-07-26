@@ -5,6 +5,7 @@
 
 pub mod audio;
 pub mod catalog;
+pub mod commodity;
 pub mod export;
 #[cfg(feature = "desktop")]
 pub mod gui;

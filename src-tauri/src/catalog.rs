@@ -492,6 +492,7 @@ pub struct DataService {
     tree_cache: Mutex<TreeCache>,
     image_cache: Mutex<ImageCache>,
     pub(crate) tooltip_name_cache: crate::item_tooltip::TooltipNameCache,
+    pub(crate) commodity_name_cache: crate::commodity::CommodityNameCache,
 }
 
 #[derive(Default)]
@@ -584,6 +585,7 @@ impl DataService {
             tree_cache: Mutex::new(TreeCache::default()),
             image_cache: Mutex::new(ImageCache::default()),
             tooltip_name_cache: Default::default(),
+            commodity_name_cache: Default::default(),
         };
         service.validate_locations()?;
         Ok((service, info))
@@ -620,6 +622,7 @@ impl DataService {
             tree_cache: Mutex::new(TreeCache::default()),
             image_cache: Mutex::new(ImageCache::default()),
             tooltip_name_cache: Default::default(),
+            commodity_name_cache: Default::default(),
         };
         service.validate_locations()?;
         Ok((service, info))

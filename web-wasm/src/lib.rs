@@ -144,6 +144,12 @@ pub fn get_item_tooltip(path: &str) -> Result<JsValue, JsValue> {
     with_service(|s| s.get_item_tooltip(path).map_err(|e| e.to_string())).and_then(|v| to_js(&v))
 }
 
+/// 商城商品清單：回 `CommodityItem[]`（camelCase），語意對齊 gui.rs 的 get_commodity_items。
+#[wasm_bindgen]
+pub fn get_commodity_items() -> Result<JsValue, JsValue> {
+    with_service(|s| s.get_commodity_items().map_err(|e| e.to_string())).and_then(|v| to_js(&v))
+}
+
 /// 取圖：回 `{ png: Uint8Array, mode: "exact" | "atlas", note: string | null }`，
 /// 查無圖片回 `null`；保留 gui.rs 的 atlas fallback 串接邏輯（不轉 base64）。
 #[wasm_bindgen]

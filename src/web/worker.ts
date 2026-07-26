@@ -220,6 +220,8 @@ async function dispatch(method: string, args: unknown[]): Promise<unknown> {
       return wasm.get_audio(args[0] as string);
     case "getItemTooltip":
       return wasm.get_item_tooltip(args[0] as string);
+    case "getCommodityItems":
+      return wasm.get_commodity_items();
     case "searchNodes":
       return wasm.search_nodes(args[0] as string, (args[1] as number | undefined) ?? null);
     case "exportFile":

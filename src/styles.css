@@ -1633,3 +1633,189 @@ textarea:focus-visible,
   font-size: 0.8rem;
   line-height: 1.7;
 }
+
+/* ── 商城（Etc/TW/Commodity）檢視 ───────────────────────────── */
+
+.commodity-status {
+  margin: 0;
+  padding: 12px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.commodity-card .find-hint,
+.commodity-raw-bar .find-hint {
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--button-bg);
+  color: var(--muted);
+  padding: 3px 8px;
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.commodity-card .find-hint:hover,
+.commodity-raw-bar .find-hint:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text-strong);
+}
+
+.commodity-raw-stack {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.commodity-raw-bar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.commodity-tabs,
+.commodity-subtabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px 9px 0;
+}
+
+.commodity-subtabs {
+  padding-top: 6px;
+}
+
+.commodity-tabs button,
+.commodity-subtabs button {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--button-bg);
+  color: var(--muted);
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.commodity-subtabs button {
+  padding: 2px 8px;
+  font-size: 0.66rem;
+}
+
+.commodity-tabs button:hover,
+.commodity-subtabs button:hover {
+  border-color: var(--accent);
+  color: var(--text-strong);
+}
+
+.commodity-tabs button.is-active,
+.commodity-subtabs button.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text-strong);
+}
+
+/* 卡片寬度固定下限，每行數量依容器寬度自動換行 */
+.commodity-grid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 8px;
+  padding: 9px;
+}
+
+.commodity-item {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: 8px;
+}
+
+.commodity-item-icon {
+  display: flex;
+  width: 56px;
+  height: 56px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.commodity-item-icon img {
+  max-width: 48px;
+  max-height: 48px;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
+}
+
+.commodity-item-noicon {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.commodity-item-body {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.commodity-item-name {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--text-strong);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.commodity-item-price {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.commodity-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 9px 10px;
+}
+
+.commodity-pager button {
+  min-width: 26px;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--button-bg);
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.commodity-pager button:not(:disabled):hover {
+  border-color: var(--accent);
+  color: var(--text-strong);
+}
+
+.commodity-pager button.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text-strong);
+}
+
+.commodity-pager button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.commodity-pager-ellipsis {
+  color: var(--muted);
+  font-size: 0.7rem;
+}

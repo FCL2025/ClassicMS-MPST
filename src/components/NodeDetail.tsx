@@ -17,6 +17,7 @@ import {
 } from "../api";
 import { ImagePreview } from "./ImagePreview";
 import { ItemTooltip } from "./ItemTooltip";
+import { CommodityShop } from "./CommodityShop";
 
 interface NodeDetailProps {
   path: string | null;
@@ -157,7 +158,7 @@ function AutoTextarea({ value }: { value: string }) {
 
 // TextAsset 檢視器：高度撐到 .app-right 可視區底部，並支援 Ctrl+F 在內容裡搜尋
 // （Enter 下一筆、Shift+Enter 上一筆、Esc 關閉，命中筆會選取並捲到可視範圍）。
-function TextAssetCard({ text }: { text: string }) {
+export function TextAssetCard({ text }: { text: string }) {
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
   const [findOpen, setFindOpen] = useState(false);
@@ -632,7 +633,11 @@ export function NodeDetail({
           ) : null}
 
           {detail.text_asset != null ? (
-            <TextAssetCard key={detail.path} text={detail.text_asset} />
+            detail.path === "Etc/TW/Commodity" ? (
+              <CommodityShop key={detail.path} text={detail.text_asset} />
+            ) : (
+              <TextAssetCard key={detail.path} text={detail.text_asset} />
+            )
           ) : null}
 
         </div>
