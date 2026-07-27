@@ -74,15 +74,8 @@ textarea:focus-visible,
   padding: 5px 8px;
 }
 
-.header-summary {
-  min-width: 0;
+.header-spacer {
   margin-left: auto;
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 0.72rem;
-  font-variant-numeric: tabular-nums;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .icon-button {
@@ -1559,10 +1552,6 @@ textarea:focus-visible,
 }
 
 @media (max-width: 720px) {
-  .header-summary {
-    display: none;
-  }
-
   .app-body {
     grid-template-columns: minmax(220px, var(--tree-pane-width, 300px)) 7px minmax(320px, 1fr);
   }
@@ -1899,4 +1888,594 @@ textarea:focus-visible,
 .commodity-pager-ellipsis {
   color: #5a6b7d;
   font-size: 0.7rem;
+}
+
+/* ===== 紙娃娃 ===== */
+
+/* header 的檢視切換頁籤（瀏覽 / 紙娃娃）。 */
+.view-tabs {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.view-tabs button {
+  min-height: 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--button-bg);
+  color: var(--text-strong);
+  padding: 0 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.view-tabs button:not(:disabled):not(.is-active):hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.view-tabs button.is-active:not(:disabled):hover {
+  filter: brightness(0.92);
+}
+
+.view-tabs button.is-active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.view-tabs button:disabled {
+  color: var(--disabled);
+}
+
+/* 紙娃娃模式：沒有樹狀區與拖曳條，右半整塊給 AvatarPage。 */
+.app-body.is-avatar {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app-body.is-avatar .app-right {
+  overflow: hidden;
+  padding: 0;
+}
+
+/* 左 20% / 右 80%。 */
+.avatar-page {
+  display: grid;
+  height: 100%;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 4fr);
+}
+
+/* display:grid 會蓋掉 hidden 屬性的預設 display:none，補回來。 */
+.avatar-page[hidden] {
+  display: none;
+}
+
+.avatar-page-status {
+  grid-column: 1 / -1;
+  align-self: center;
+  justify-self: center;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.avatar-left {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  border-right: 1px solid var(--border-strong);
+  background: var(--surface-raised);
+}
+
+/* 上：正方形預覽（寬 = 欄寬）。 */
+.avatar-left-preview {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-bottom: 1px solid var(--border);
+}
+
+/* 下：控制區（可捲動）。 */
+.avatar-left-controls {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.avatar-controls {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 10px;
+}
+
+.avatar-control-row {
+  display: grid;
+  gap: 3px;
+}
+
+.avatar-control-row label {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.avatar-control-row select {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--button-bg);
+  color: var(--text-strong);
+  padding: 4px 6px;
+  font-size: 0.75rem;
+}
+
+/* 動作下拉 + 右側並排的正方形播放/暫停鈕。 */
+.avatar-action-row {
+  display: flex;
+  min-width: 0;
+  gap: 6px;
+}
+
+.avatar-action-row select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.avatar-play-button {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--button-bg);
+  color: var(--text-strong);
+  padding: 0;
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+.avatar-play-button:not(:disabled):hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.avatar-divider {
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.avatar-equipped-title {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.avatar-equipped-empty {
+  margin: 0;
+  color: var(--subtle);
+  font-size: 0.72rem;
+}
+
+/* 已穿裝備列：點列切換顯示/隱藏，隱藏時整列半透明 + 眼睛加斜線。 */
+.avatar-equipped-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: 4px 6px;
+  cursor: pointer;
+}
+
+.avatar-equipped-row:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.avatar-equipped-row.is-hidden {
+  opacity: 0.5;
+}
+
+.avatar-equipped-icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+}
+
+.avatar-equipped-icon img {
+  max-width: 24px;
+  max-height: 24px;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
+}
+
+.avatar-equipped-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.avatar-equipped-eye {
+  flex: 0 0 auto;
+  font-size: 0.8rem;
+}
+
+.avatar-equipped-row.is-hidden .avatar-equipped-eye {
+  text-decoration: line-through;
+}
+
+.avatar-equipped-remove {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  padding: 0 4px;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.avatar-equipped-remove:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* 預覽 canvas：棋盤格透明背景（token 化，深淺色各自對應）。 */
+.avatar-preview {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--canvas-checkerboard-light);
+  background-image:
+    linear-gradient(45deg, var(--canvas-checkerboard-dark) 25%, transparent 25%, transparent 75%, var(--canvas-checkerboard-dark) 75%),
+    linear-gradient(45deg, var(--canvas-checkerboard-dark) 25%, transparent 25%, transparent 75%, var(--canvas-checkerboard-dark) 75%);
+  background-position:
+    0 0,
+    8px 8px;
+  background-size: 16px 16px;
+}
+
+.avatar-preview-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
+}
+
+.avatar-preview-status {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  max-width: calc(100% - 32px);
+  transform: translate(-50%, -50%);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--surface-raised) 92%, transparent);
+  color: var(--muted);
+  padding: 10px 12px;
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+.avatar-preview-status.is-error {
+  color: var(--danger);
+}
+
+/* 右側商店：部位 tab + grid + 分頁。 */
+.avatar-right {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+}
+
+.avatar-shop {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  background: var(--surface);
+}
+
+.avatar-shop-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  border-bottom: 1px solid var(--border);
+  padding: 8px 10px 0;
+}
+
+.avatar-shop-tabs button {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  background: var(--panel);
+  color: var(--muted);
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.avatar-shop-tabs button:hover {
+  background: var(--accent-soft);
+  color: var(--text-strong);
+}
+
+/* 選中 tab 白底與內容相接（吃掉了容器底邊那 1px）。 */
+.avatar-shop-tabs button.is-active {
+  position: relative;
+  z-index: 1;
+  margin-bottom: -1px;
+  border-bottom-color: var(--surface);
+  background: var(--surface);
+  color: var(--text-strong);
+}
+
+.avatar-shop-grid-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  padding: 8px 10px;
+}
+
+.avatar-shop-grid {
+  display: grid;
+  align-content: start;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 7px;
+}
+
+.avatar-shop-card {
+  display: flex;
+  height: 64px;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  padding: 6px;
+  text-align: left;
+}
+
+.avatar-shop-card:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* 已穿上的卡片高亮。 */
+.avatar-shop-card.is-worn {
+  border-color: var(--accent);
+  background: var(--selection);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.avatar-shop-card-icon {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.avatar-shop-card-icon img {
+  max-width: 40px;
+  max-height: 40px;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
+}
+
+.avatar-shop-card-name {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--text-strong);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.avatar-shop-status {
+  margin: 0;
+  padding: 12px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.avatar-shop-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 2px 10px 8px;
+}
+
+.avatar-shop-pager button {
+  min-width: 26px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--button-bg);
+  color: var(--text);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.avatar-shop-pager button:not(:disabled):hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.avatar-shop-pager button.is-active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.avatar-shop-pager button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.avatar-shop-pager-ellipsis {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+/* 點裝開關（header，僅紙娃娃頁顯示）。 */
+.cash-switch {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-strong);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+}
+
+.cash-switch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+}
+
+.cash-switch-track {
+  display: inline-flex;
+  width: 34px;
+  height: 18px;
+  align-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--panel-strong);
+  padding: 1px;
+}
+
+.cash-switch-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--muted);
+  transition:
+    transform 140ms ease,
+    background-color 140ms ease;
+}
+
+.cash-switch input:checked + .cash-switch-track {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.cash-switch input:checked + .cash-switch-track .cash-switch-thumb {
+  transform: translateX(16px);
+  background: var(--on-accent);
+}
+
+.cash-switch input:focus-visible + .cash-switch-track {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+/* 預覽區右上角的下載鈕。 */
+.avatar-download-button {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--button-bg) 88%, transparent);
+  color: var(--text-strong);
+  padding: 0;
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.avatar-download-button:not(:disabled):hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.avatar-download-button:disabled {
+  color: var(--disabled);
+}
+
+/* 匯出格式彈窗（骨架沿用更新日誌彈窗的 header/backdrop）。 */
+.avatar-export-dialog {
+  display: grid;
+  width: min(360px, calc(100vw - 48px));
+  grid-template-rows: auto minmax(0, 1fr);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.avatar-export-dialog-content {
+  display: grid;
+  gap: 12px;
+  padding: 4px 16px 16px;
+  font-size: 0.78rem;
+}
+
+.avatar-export-dialog-content p {
+  margin: 0;
+}
+
+.avatar-export-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.avatar-export-actions button {
+  flex: 1 1 0;
+  min-height: 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--button-bg);
+  color: var(--text-strong);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.avatar-export-actions button:not(:disabled):hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.avatar-export-actions button:disabled {
+  color: var(--disabled);
+}
+
+.avatar-export-error {
+  color: var(--danger);
+  font-size: 0.72rem;
 }

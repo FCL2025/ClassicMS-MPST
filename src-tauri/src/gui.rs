@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use serde::Serialize;
 use tauri::{Manager, State};
 
+use crate::avatar::{self, AvatarFrames, AvatarMeta, EquipItem};
 use crate::catalog::{ChildEntry, DataService, NodeDetail, OpenInfo};
 use crate::commodity::CommodityItem;
 use crate::export::{ExportStats, FileExportResult};
@@ -284,6 +285,58 @@ async fn get_commodity_items(state: State<'_, AppState>) -> Result<Vec<Commodity
     .await
 }
 
+/// 紙娃娃基本資料：body 動作清單 + 膚色清單。
+#[tauri::command]
+async fn get_avatar_meta(state: State<'_, AppState>) -> Result<AvatarMeta, String> {
+    let state = state.inner().clone();
+    blocking(move || {
+        let (service, _) = state.current_or_open(None)?;
+        avatar::avatar_meta(&service).map_err(|error| error.to_string())
+    })
+    .await
+}
+
+/// 指定臉型的表情清單。
+#[tauri::command]
+async fn get_avatar_emotions(
+    face_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, String> {
+    let state = state.inner().clone();
+    blocking(move || {
+        let (service, _) = state.current_or_open(None)?;
+        avatar::avatar_emotions(&service, &face_id).map_err(|error| error.to_string())
+    })
+    .await
+}
+
+/// 全裝備清單（id / 名稱 / slot / icon 路徑）。
+#[tauri::command]
+async fn get_avatar_equipment(state: State<'_, AppState>) -> Result<Vec<EquipItem>, String> {
+    let state = state.inner().clone();
+    blocking(move || {
+        let (service, _) = state.current_or_open(None)?;
+        avatar::avatar_equipment(&service).map_err(|error| error.to_string())
+    })
+    .await
+}
+
+/// 合成紙娃娃一個動作的幀圖層（身體幀 + 表情幀）。
+#[tauri::command]
+async fn get_avatar_frames(
+    parts: Vec<avatar::PartInput>,
+    action: String,
+    emotion: String,
+    state: State<'_, AppState>,
+) -> Result<AvatarFrames, String> {
+    let state = state.inner().clone();
+    blocking(move || {
+        let (service, _) = state.current_or_open(None)?;
+        avatar::avatar_frames(&service, parts, &action, &emotion).map_err(|error| error.to_string())
+    })
+    .await
+}
+
 #[tauri::command]
 async fn search_nodes(
     query: String,
@@ -368,6 +421,10 @@ pub fn run() {
             get_audio,
             get_item_tooltip,
             get_commodity_items,
+            get_avatar_meta,
+            get_avatar_emotions,
+            get_avatar_equipment,
+            get_avatar_frames,
             search_nodes,
             export_subtree,
             export_file,

@@ -29,3 +29,7 @@ path = "../../src-tauri/examples/wz_ls.rs"
 [[bin]]
 name = "wzjs_xcheck"
 path = "../../src-tauri/examples/wzjs_xcheck.rs"
+
+[[bin]]
+name = "zmap_dump"
+path = "../../src-tauri/examples/zmap_dump.rs"

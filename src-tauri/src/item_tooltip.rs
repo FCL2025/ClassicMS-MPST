@@ -40,7 +40,7 @@ const JOB_MASK_LABELS: &[(i64, &str)] = &[
 ];
 
 /// `String/TW/Item` text_asset 解析後的名稱表：道具 id →（名稱, 說明）。
-type ItemNameTable = HashMap<u32, (String, Option<String>)>;
+pub(crate) type ItemNameTable = HashMap<u32, (String, Option<String>)>;
 
 /// 名稱表懶載入快取（1.2MB JSON 只需解析一次；跟隨 DataService 生命週期，
 /// 更換資料集時自動重建）。
@@ -181,7 +181,7 @@ impl DataService {
     }
 
     /// 懶載入 `String/TW/Item` 名稱表；資料集沒有此資產時視為空表。
-    fn item_names(&self) -> Result<Arc<ItemNameTable>> {
+    pub(crate) fn item_names(&self) -> Result<Arc<ItemNameTable>> {
         let mut guard = self
             .tooltip_name_cache
             .0

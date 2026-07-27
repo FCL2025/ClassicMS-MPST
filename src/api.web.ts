@@ -120,6 +120,59 @@ export interface CommodityItem {
   iconBase64: string | null;
 }
 
+/** 紙娃娃膚色（對齊 avatar.rs 的 serde 輸出）。 */
+export interface SkinInfo {
+  bodyId: string;
+  headId: string;
+  name: string;
+}
+
+/** 紙娃娃基本資料：body 動作清單 + 膚色清單。 */
+export interface AvatarMeta {
+  actions: string[];
+  skins: SkinInfo[];
+}
+
+/** 紙娃娃裝備項目。 */
+export interface EquipItem {
+  id: string;
+  name: string;
+  slot: string;
+  iconPath: string;
+  cash: boolean;
+}
+
+/** 紙娃娃部位輸入（"body"/"head" 必有，其餘為裝備 slot）。 */
+export interface PartInput {
+  slot: string;
+  id: string;
+  visible: boolean;
+}
+
+/** 紙娃娃幀內的一個圖層（path 用 getImage 取圖，x/y 為 canvas 左上角）。 */
+export interface AvatarLayer {
+  path: string;
+  x: number;
+  y: number;
+  z: number;
+}
+
+/** 紙娃娃動畫幀（layers 已按繪製順序排好，z 遞減）。 */
+export interface AvatarFrame {
+  delay: number;
+  layers: AvatarLayer[];
+  /** 身體幀專用：當幀 brow 錨點的絕對位置（表情層以此即時配對）；表情幀恆 null。 */
+  faceAnchor: [number, number] | null;
+  /** 身體幀專用：當幀是否要畫臉（背面動作不畫）；表情幀恆 true。 */
+  showFace: boolean;
+}
+
+/** 紙娃娃合成結果：身體動畫幀 + 表情動畫幀。 */
+export interface AvatarFrames {
+  frames: AvatarFrame[];
+  faceFrames: AvatarFrame[];
+}
+
 // pickDataDirectory 與 openDataDir 之間的暫存:File 物件無法走字串路徑往返,
 // 所以選完資料夾先存在這裡,openDataDir 時餵給 Worker。
 let pendingPick: PickedFolder | null = null;
@@ -173,6 +226,16 @@ export const getItemTooltip = (path: string) =>
   rpc<ItemTooltip | null>("getItemTooltip", path);
 
 export const getCommodityItems = () => rpc<CommodityItem[]>("getCommodityItems");
+
+export const getAvatarMeta = () => rpc<AvatarMeta>("getAvatarMeta");
+
+export const getAvatarEmotions = (faceId: string) =>
+  rpc<string[]>("getAvatarEmotions", faceId);
+
+export const getAvatarEquipment = () => rpc<EquipItem[]>("getAvatarEquipment");
+
+export const getAvatarFrames = (parts: PartInput[], action: string, emotion: string) =>
+  rpc<AvatarFrames>("getAvatarFrames", parts, action, emotion);
 
 interface WasmFileExport {
   filename: string;

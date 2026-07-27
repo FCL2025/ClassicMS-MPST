@@ -20,6 +20,7 @@ import {
   type OpenInfo,
   type OpenResult,
 } from "./api";
+import { AvatarPage } from "./components/AvatarPage";
 import { ExportMenu } from "./components/ExportMenu";
 import { ChangelogDialog } from "./components/ChangelogDialog";
 import { NodeDetail } from "./components/NodeDetail";
@@ -76,7 +77,7 @@ export default function App() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<ChildEntry | null>(null);
   const [openInfo, setOpenInfo] = useState<OpenInfo | null>(null);
-  const [dataDir, setDataDir] = useState<string | null>(null);
+  const [, setDataDir] = useState<string | null>(null);
   const [dataError, setDataError] = useState<string | null>(null);
   const [loadingData, setLoadingData] = useState(false);
   const [status, setStatus] = useState("請先選擇楓之谷經典版的遊戲資料夾");
@@ -85,6 +86,12 @@ export default function App() {
   const [treeWidth, setTreeWidth] = useState(initialTreeWidth);
   const [resizingTree, setResizingTree] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
+  // 頂部 view 切換：瀏覽（資產樹）/ 紙娃娃（角色試穿）。
+  const [view, setView] = useState<"tree" | "avatar">("tree");
+  // 紙娃娃第一次切過去才掛載（meta/equipment 此時才載入），之後保持掛載不重置狀態。
+  const [avatarActivated, setAvatarActivated] = useState(false);
+  // 紙娃娃商店的「點裝」開關：ON 時只列 cash 裝備（App 持有，切 view 不重置）。
+  const [cashOnly, setCashOnly] = useState(false);
   const treeWidthRef = useRef(treeWidth);
   const childrenMapRef = useRef(childrenMap);
   const childRequestsRef = useRef(new Map<string, Promise<void>>());
@@ -316,13 +323,45 @@ export default function App() {
           }}
           onShowChangelog={() => setShowChangelog(true)}
         />
-        {openInfo ? (
-          <div className="header-summary" title={dataDir ?? undefined}>
-            {openInfo.entry_count.toLocaleString()} 資產 · {openInfo.bundle_count} bundles
-          </div>
-        ) : (
-          <div className="header-summary">尚未選擇資料來源</div>
-        )}
+        <div className="view-tabs" role="tablist" aria-label="檢視切換">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "tree"}
+            className={view === "tree" ? "is-active" : ""}
+            onClick={() => setView("tree")}
+          >
+            瀏覽
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "avatar"}
+            className={view === "avatar" ? "is-active" : ""}
+            disabled={!openInfo}
+            title={openInfo ? "角色試穿" : "請先選擇資料夾"}
+            onClick={() => {
+              setView("avatar");
+              setAvatarActivated(true);
+            }}
+          >
+            紙娃娃
+          </button>
+        </div>
+        <div className="header-spacer" />
+        {view === "avatar" ? (
+          <label className="cash-switch" title="只顯示點數裝備">
+            <input
+              type="checkbox"
+              checked={cashOnly}
+              onChange={(event) => setCashOnly(event.target.checked)}
+            />
+            <span className="cash-switch-track" aria-hidden="true">
+              <span className="cash-switch-thumb" />
+            </span>
+            點裝
+          </label>
+        ) : null}
         <button
           className="data-folder-button"
           type="button"
@@ -365,38 +404,53 @@ export default function App() {
       ) : null}
 
       {openInfo ? (
-        <div className="app-body" style={workspaceStyle}>
-          <aside className="app-left" aria-label="資產樹">
-            <TreeView
-              childrenOf={childrenOf}
-              expanded={expanded}
-              selected={selected?.path ?? null}
-              onToggle={onToggle}
-              onSelect={setSelected}
-            />
-            <div className="tree-panel-heading">
-              <SearchBar onPick={onPickSearchResult} />
-            </div>
-          </aside>
-          <div
-            className={`workspace-resizer${resizingTree ? " is-active" : ""}`}
-            role="separator"
-            tabIndex={0}
-            aria-label="調整資產樹寬度"
-            aria-orientation="vertical"
-            aria-valuemin={MIN_TREE_WIDTH}
-            aria-valuemax={Math.round(window.innerWidth * 0.58)}
-            aria-valuenow={treeWidth}
-            onKeyDown={onResizeKeyDown}
-            onPointerDown={onResizeStart}
-            onPointerMove={onResizeMove}
-            onPointerUp={finishResize}
-            onPointerCancel={finishResize}
-          >
-            <span />
-          </div>
+        <div
+          className={`app-body${view === "avatar" ? " is-avatar" : ""}`}
+          style={workspaceStyle}
+        >
+          {view === "tree" ? (
+            <>
+              <aside className="app-left" aria-label="資產樹">
+                <TreeView
+                  childrenOf={childrenOf}
+                  expanded={expanded}
+                  selected={selected?.path ?? null}
+                  onToggle={onToggle}
+                  onSelect={setSelected}
+                />
+                <div className="tree-panel-heading">
+                  <SearchBar onPick={onPickSearchResult} />
+                </div>
+              </aside>
+              <div
+                className={`workspace-resizer${resizingTree ? " is-active" : ""}`}
+                role="separator"
+                tabIndex={0}
+                aria-label="調整資產樹寬度"
+                aria-orientation="vertical"
+                aria-valuemin={MIN_TREE_WIDTH}
+                aria-valuemax={Math.round(window.innerWidth * 0.58)}
+                aria-valuenow={treeWidth}
+                onKeyDown={onResizeKeyDown}
+                onPointerDown={onResizeStart}
+                onPointerMove={onResizeMove}
+                onPointerUp={finishResize}
+                onPointerCancel={finishResize}
+              >
+                <span />
+              </div>
+            </>
+          ) : null}
           <main className="app-right">
-            <NodeDetail path={detailPath} emptyMode={selectedIsCategory ? "category" : "selection"} />
+            {view === "tree" ? (
+              <NodeDetail
+                path={detailPath}
+                emptyMode={selectedIsCategory ? "category" : "selection"}
+              />
+            ) : null}
+            {avatarActivated || view === "avatar" ? (
+              <AvatarPage visible={view === "avatar"} cashOnly={cashOnly} />
+            ) : null}
           </main>
         </div>
       ) : (

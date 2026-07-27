@@ -4,6 +4,7 @@
 //! UnityFS（LZ4 區塊隨機存取）→ SerializedFile v22 → 硬編物件佈局。
 
 pub mod audio;
+pub mod avatar;
 pub mod catalog;
 pub mod commodity;
 pub mod export;

@@ -1,6 +1,6 @@
 [package]
 name = "msclassic"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2021"
 description = "楓之谷經典版 Unity 資料瀏覽、圖片預覽與 JSON/PNG/XML 匯出工具"
 default-run = "msclassic"
@@ -146,3 +146,9 @@ name = "probe_audio"
 
 [[example]]
 name = "tt_probe7"
+
+[[example]]
+name = "avatar_probe"
+
+[[example]]
+name = "avatar_smoke"

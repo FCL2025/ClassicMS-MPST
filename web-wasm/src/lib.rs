@@ -150,6 +150,47 @@ pub fn get_commodity_items() -> Result<JsValue, JsValue> {
     with_service(|s| s.get_commodity_items().map_err(|e| e.to_string())).and_then(|v| to_js(&v))
 }
 
+/// 紙娃娃基本資料：回 `AvatarMeta`（camelCase），語意對齊 gui.rs 的 get_avatar_meta。
+#[wasm_bindgen]
+pub fn get_avatar_meta() -> Result<JsValue, JsValue> {
+    with_service(|s| msclassic::avatar::avatar_meta(s).map_err(|e| e.to_string()))
+        .and_then(|v| to_js(&v))
+}
+
+/// 指定臉型的表情清單：回 `string[]`，語意對齊 gui.rs 的 get_avatar_emotions。
+#[wasm_bindgen]
+pub fn get_avatar_emotions(face_id: &str) -> Result<JsValue, JsValue> {
+    with_service(|s| msclassic::avatar::avatar_emotions(s, face_id).map_err(|e| e.to_string()))
+        .and_then(|v| to_js(&v))
+}
+
+/// 全裝備清單：回 `EquipItem[]`（camelCase），語意對齊 gui.rs 的 get_avatar_equipment。
+#[wasm_bindgen]
+pub fn get_avatar_equipment() -> Result<JsValue, JsValue> {
+    with_service(|s| msclassic::avatar::avatar_equipment(s).map_err(|e| e.to_string()))
+        .and_then(|v| to_js(&v))
+}
+
+/// 合成紙娃娃幀圖層：`parts` 是 JS 物件陣列 `[{ slot, id, visible }]`，
+/// 回 `AvatarFrames`（camelCase），語意對齊 gui.rs 的 get_avatar_frames。
+#[wasm_bindgen]
+pub fn get_avatar_frames(parts: JsValue, action: &str, emotion: &str) -> Result<JsValue, JsValue> {
+    let parts = parse_parts(&parts)?;
+    with_service(|s| {
+        msclassic::avatar::avatar_frames(s, parts, action, emotion).map_err(|e| e.to_string())
+    })
+    .and_then(|v| to_js(&v))
+}
+
+/// JS 傳入的 parts 陣列 → `Vec<PartInput>`（camelCase 鍵）。
+fn parse_parts(parts: &JsValue) -> Result<Vec<msclassic::avatar::PartInput>, JsValue> {
+    let json = js_sys::JSON::stringify(parts)
+        .ok()
+        .and_then(|s| s.as_string())
+        .ok_or_else(|| js_err("parts 無法序列化"))?;
+    serde_json::from_str(&json).map_err(|e| js_err(format!("parts 格式錯誤: {e}")))
+}
+
 /// 取圖：回 `{ png: Uint8Array, mode: "exact" | "atlas", note: string | null }`，
 /// 查無圖片回 `null`；保留 gui.rs 的 atlas fallback 串接邏輯（不轉 base64）。
 #[wasm_bindgen]

@@ -97,6 +97,59 @@ export interface CommodityItem {
   iconBase64: string | null;
 }
 
+/** 紙娃娃膚色（對齊 avatar.rs 的 serde 輸出）。 */
+export interface SkinInfo {
+  bodyId: string;
+  headId: string;
+  name: string;
+}
+
+/** 紙娃娃基本資料：body 動作清單 + 膚色清單。 */
+export interface AvatarMeta {
+  actions: string[];
+  skins: SkinInfo[];
+}
+
+/** 紙娃娃裝備項目。 */
+export interface EquipItem {
+  id: string;
+  name: string;
+  slot: string;
+  iconPath: string;
+  cash: boolean;
+}
+
+/** 紙娃娃部位輸入（"body"/"head" 必有，其餘為裝備 slot）。 */
+export interface PartInput {
+  slot: string;
+  id: string;
+  visible: boolean;
+}
+
+/** 紙娃娃幀內的一個圖層（path 用 getImage 取圖，x/y 為 canvas 左上角）。 */
+export interface AvatarLayer {
+  path: string;
+  x: number;
+  y: number;
+  z: number;
+}
+
+/** 紙娃娃動畫幀（layers 已按繪製順序排好，z 遞減）。 */
+export interface AvatarFrame {
+  delay: number;
+  layers: AvatarLayer[];
+  /** 身體幀專用：當幀 brow 錨點的絕對位置（表情層以此即時配對）；表情幀恆 null。 */
+  faceAnchor: [number, number] | null;
+  /** 身體幀專用：當幀是否要畫臉（背面動作不畫）；表情幀恆 true。 */
+  showFace: boolean;
+}
+
+/** 紙娃娃合成結果：身體動畫幀 + 表情動畫幀。 */
+export interface AvatarFrames {
+  frames: AvatarFrame[];
+  faceFrames: AvatarFrame[];
+}
+
 export type ExportFormat = "json" | "png" | "xml";
 
 export interface FileExportResult {
@@ -112,6 +165,12 @@ export const getAudio = (path: string) => invoke<AudioResult>("get_audio", { pat
 export const getItemTooltip = (path: string) =>
   invoke<ItemTooltip | null>("get_item_tooltip", { path });
 export const getCommodityItems = () => invoke<CommodityItem[]>("get_commodity_items");
+export const getAvatarMeta = () => invoke<AvatarMeta>("get_avatar_meta");
+export const getAvatarEmotions = (faceId: string) =>
+  invoke<string[]>("get_avatar_emotions", { faceId });
+export const getAvatarEquipment = () => invoke<EquipItem[]>("get_avatar_equipment");
+export const getAvatarFrames = (parts: PartInput[], action: string, emotion: string) =>
+  invoke<AvatarFrames>("get_avatar_frames", { parts, action, emotion });
 export const searchNodes = (query: string, limit = 200) =>
   invoke<string[]>("search_nodes", { query, limit });
 export const exportSubtree = (path: string) => invoke<ExportStats>("export_subtree", { path });

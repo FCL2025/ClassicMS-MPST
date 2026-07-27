@@ -222,6 +222,14 @@ async function dispatch(method: string, args: unknown[]): Promise<unknown> {
       return wasm.get_item_tooltip(args[0] as string);
     case "getCommodityItems":
       return wasm.get_commodity_items();
+    case "getAvatarMeta":
+      return wasm.get_avatar_meta();
+    case "getAvatarEmotions":
+      return wasm.get_avatar_emotions(args[0] as string);
+    case "getAvatarEquipment":
+      return wasm.get_avatar_equipment();
+    case "getAvatarFrames":
+      return wasm.get_avatar_frames(args[0], args[1] as string, args[2] as string);
     case "searchNodes":
       return wasm.search_nodes(args[0] as string, (args[1] as number | undefined) ?? null);
     case "exportFile":
