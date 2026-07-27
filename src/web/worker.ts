@@ -229,7 +229,12 @@ async function dispatch(method: string, args: unknown[]): Promise<unknown> {
     case "getAvatarEquipment":
       return wasm.get_avatar_equipment();
     case "getAvatarFrames":
-      return wasm.get_avatar_frames(args[0], args[1] as string, args[2] as string);
+      return wasm.get_avatar_frames(
+        args[0],
+        args[1] as string,
+        args[2] as string,
+        args[3] as boolean,
+      );
     case "searchNodes":
       return wasm.search_nodes(args[0] as string, (args[1] as number | undefined) ?? null);
     case "exportFile":

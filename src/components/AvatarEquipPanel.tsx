@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { EquipItem, SkinInfo } from "../api";
 import type { EquipSlot, PartsState } from "./AvatarPage";
 import { loadAvatarIcon, SLOT_TABS } from "./AvatarShop";
+import { COLOR_LABELS } from "./avatarColor";
 
 function AvatarEquipRow({
   slot,
@@ -75,6 +76,11 @@ interface AvatarEquipPanelProps {
   emotions: string[];
   emotion: string;
   onEmotionChange: (emotion: string) => void;
+  hairColor: number;
+  faceColor: number;
+  onColorChange: (slot: "hair" | "face", color: number) => void;
+  hairCover: boolean;
+  onHairCoverChange: (hairCover: boolean) => void;
   playing: boolean;
   onTogglePlaying: () => void;
   parts: PartsState;
@@ -94,6 +100,11 @@ export function AvatarEquipPanel({
   emotions,
   emotion,
   onEmotionChange,
+  hairColor,
+  faceColor,
+  onColorChange,
+  hairCover,
+  onHairCoverChange,
   playing,
   onTogglePlaying,
   parts,
@@ -165,6 +176,55 @@ export function AvatarEquipPanel({
             {playing ? "⏸" : "▶"}
           </button>
         </div>
+      </div>
+
+      {/* 臉型顏色 / 髮型顏色：左右並排。 */}
+      <div className="avatar-control-row">
+        <div className="avatar-color-row">
+          <div className="avatar-color-field">
+            <label htmlFor="avatar-face-color-select">臉型顏色</label>
+            <select
+              id="avatar-face-color-select"
+              value={faceColor}
+              onChange={(event) => onColorChange("face", Number(event.target.value))}
+            >
+              {COLOR_LABELS.map((label, index) => (
+                <option key={label} value={index}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="avatar-color-field">
+            <label htmlFor="avatar-hair-color-select">髮型顏色</label>
+            <select
+              id="avatar-hair-color-select"
+              value={hairColor}
+              onChange={(event) => onColorChange("hair", Number(event.target.value))}
+            >
+              {COLOR_LABELS.map((label, index) => (
+                <option key={label} value={index}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* 帽子遮髮（hairCover）：勾選時帽子蓋住髮型；不勾時髮型超出帽子。 */}
+      <div className="avatar-control-row">
+        <label
+          className="avatar-hair-cover"
+          title="勾選時帽子蓋住髮型；不勾時髮型超出帽子（有戴帽子才生效）"
+        >
+          <input
+            type="checkbox"
+            checked={hairCover}
+            onChange={(event) => onHairCoverChange(event.target.checked)}
+          />
+          帽子遮髮
+        </label>
       </div>
 
       <hr className="avatar-divider" />

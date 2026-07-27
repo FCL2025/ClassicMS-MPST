@@ -173,11 +173,18 @@ pub fn get_avatar_equipment() -> Result<JsValue, JsValue> {
 
 /// 合成紙娃娃幀圖層：`parts` 是 JS 物件陣列 `[{ slot, id, visible }]`，
 /// 回 `AvatarFrames`（camelCase），語意對齊 gui.rs 的 get_avatar_frames。
+/// `hair_cover` = 「帽子遮髮」核取方塊（有戴帽才生效）。
 #[wasm_bindgen]
-pub fn get_avatar_frames(parts: JsValue, action: &str, emotion: &str) -> Result<JsValue, JsValue> {
+pub fn get_avatar_frames(
+    parts: JsValue,
+    action: &str,
+    emotion: &str,
+    hair_cover: bool,
+) -> Result<JsValue, JsValue> {
     let parts = parse_parts(&parts)?;
     with_service(|s| {
-        msclassic::avatar::avatar_frames(s, parts, action, emotion).map_err(|e| e.to_string())
+        msclassic::avatar::avatar_frames(s, parts, action, emotion, hair_cover)
+            .map_err(|e| e.to_string())
     })
     .and_then(|v| to_js(&v))
 }

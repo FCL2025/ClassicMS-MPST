@@ -376,11 +376,16 @@ pub fn avatar_equipment(svc: &DataService) -> Result<Vec<EquipItem>> {
 /// 臉（face）獨立輸出到 `face_frames`（幀數 = 表情幀數），layers 是
 /// **相對於 brow 錨點的相對座標**；前端以身體幀的 `face_anchor` + 表情幀
 /// 的相對座標在繪製當下配對，臉就會跟著頭動。
+///
+/// `hair_cover` = UI 的「帽子遮髮」核取方塊（對齊 WzComparerR2 的 HairCover）：
+/// 勾選且有戴帽 → 藏 hairOverHead 等蓋頭髮層；不勾 → 髮型超出帽子
+/// （藏 hair/backHairBelowCap 等帽下髮層）。沒戴帽時此旗標無效果。
 pub fn avatar_frames(
     svc: &DataService,
     parts: Vec<PartInput>,
     action: &str,
     emotion: &str,
+    hair_cover: bool,
 ) -> Result<AvatarFrames> {
     const REST_ORDER: &[&str] = &[
         "coat", "longcoat", "pants", "shoes", "glove", "cape", "shield", "weapon", "earrings",
@@ -395,7 +400,9 @@ pub fn avatar_frames(
             ordered.push(p);
         }
     }
+    // 有效遮髮 = 有戴帽 + 使用者勾選遮髮（HairCover 規則見 hair_canvas_hidden）。
     let cap_visible = parts.iter().any(|p| p.slot == "cap" && p.visible);
+    let hair_cover = cap_visible && hair_cover;
 
     let mut resolved: Vec<ResolvedPart> = Vec::new();
     for part in ordered {
@@ -484,8 +491,16 @@ pub fn avatar_frames(
                 // body canvas 必須最先放（它的錨點是全角色的對齊基準）
                 canvases.sort_by_key(|(node, _)| u8::from(node.name != "body"));
             }
-            for (node, crel) in canvases {
-                if part.slot == "hair" && hair_canvas_hidden(z_str(node), cap_visible) {
+            // 帽子遮髮規則。不遮髮時若整個髮型會被藏光就不藏：有些髮型
+            // （如 00030160）只有一張 z="hair" 的本體貼圖、沒有 hairOverHead
+            // 變體，藏了會變光頭。
+            let hidden: Vec<bool> = canvases
+                .iter()
+                .map(|(node, _)| part.slot == "hair" && hair_canvas_hidden(z_str(node), hair_cover))
+                .collect();
+            let keep_all = !hair_cover && !hidden.is_empty() && hidden.iter().all(|&hide| hide);
+            for ((node, crel), hide) in canvases.into_iter().zip(hidden) {
+                if hide && !keep_all {
                     continue;
                 }
                 let root_pos =
@@ -850,8 +865,8 @@ fn face_relative_pos(node: &WzNode) -> Option<(f32, f32)> {
     Some((-(origin.0 + brow.0), -(origin.1 + brow.1)))
 }
 
-/// HairCover 規則：有帽（visible）藏蓋頭髮層，無帽藏帽下髮層。
-fn hair_canvas_hidden(z: Option<&str>, cap_visible: bool) -> bool {
+/// HairCover 規則（對齊 WzComparerR2）：遮髮時藏蓋頭髮層，不遮時藏帽下髮層。
+fn hair_canvas_hidden(z: Option<&str>, hair_cover: bool) -> bool {
     let Some(z) = z else {
         return false;
     };
@@ -862,7 +877,7 @@ fn hair_canvas_hidden(z: Option<&str>, cap_visible: bool) -> bool {
         "backHairBelowCapWide",
         "backHairBelowCapNarrow",
     ];
-    if cap_visible {
+    if hair_cover {
         WITH_CAP.contains(&z)
     } else {
         NO_CAP.contains(&z)

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getAvatarEmotions,
   getAvatarEquipment,
@@ -13,6 +13,7 @@ import {
 import { AvatarEquipPanel } from "./AvatarEquipPanel";
 import { AvatarPreview } from "./AvatarPreview";
 import { AvatarShop } from "./AvatarShop";
+import { resolveColorVariant } from "./avatarColor";
 
 // 可穿的裝備部位（body/head 是膚色，不在此列）。
 export type EquipSlot =
@@ -43,7 +44,16 @@ export type PartsState = Partial<Record<EquipSlot, AvatarPartState>>;
 const DEFAULT_FACE_ID = "00020000";
 
 // 紙娃娃頁：所有試穿狀態集中在這裡，預覽/控制區/商店都是受控元件。
-export function AvatarPage({ visible, cashOnly }: { visible: boolean; cashOnly: boolean }) {
+export function AvatarPage({
+  visible,
+  cashOnly,
+  onPickItem,
+}: {
+  visible: boolean;
+  cashOnly: boolean;
+  /** 點商店卡片時回報裝備 img 路徑（給 App footer 麵包屑）。 */
+  onPickItem?: (path: string) => void;
+}) {
   const [meta, setMeta] = useState<AvatarMeta | null>(null);
   const [equipment, setEquipment] = useState<EquipItem[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -53,12 +63,26 @@ export function AvatarPage({ visible, cashOnly }: { visible: boolean; cashOnly: 
   const [emotions, setEmotions] = useState<string[]>(["default"]);
   const [playing, setPlaying] = useState(true);
   const [parts, setParts] = useState<PartsState>({});
+  // 髮色/臉色（0–7）：穿上或換色時套用，見 avatarColor.ts。
+  const [hairColor, setHairColor] = useState(0);
+  const [faceColor, setFaceColor] = useState(0);
+  // 帽子遮髮（對齊 WzComparerR2 的 HairCover）：勾選且有戴帽 → 帽子蓋住髮型；
+  // 不勾 → 髮型超出帽子。沒戴帽時無效果。
+  const [hairCover, setHairCover] = useState(true);
   const [frames, setFrames] = useState<AvatarFrames | null>(null);
   const [framesLoading, setFramesLoading] = useState(false);
   const [framesError, setFramesError] = useState<string | null>(null);
   const framesGenerationRef = useRef(0);
 
-  const faceId = parts.face?.id ?? DEFAULT_FACE_ID;
+  // 換色時查 variant 是否存在用（全裝備 id 集合）。
+  const equipmentIds = useMemo(
+    () => new Set((equipment ?? []).map((item) => item.id)),
+    [equipment],
+  );
+  const idExists = useCallback((id: string) => equipmentIds.has(id), [equipmentIds]);
+
+  // 沒穿臉型時用預設臉，但跟著臉色選擇換色（該色不存在時退回顏色 0）。
+  const faceId = parts.face?.id ?? resolveColorVariant("face", DEFAULT_FACE_ID, faceColor, idExists);
 
   // meta + equipment：第一次切到紙娃娃（此元件掛載）才載入，之後保持。
   useEffect(() => {
@@ -101,7 +125,7 @@ export function AvatarPage({ visible, cashOnly }: { visible: boolean; cashOnly: 
     };
   }, [faceId]);
 
-  // 任何 parts/skin/action/emotion 變更 → 重取合成幀（generation guard 防舊回應覆蓋）。
+  // 任何 parts/skin/action/emotion/hairCover 變更 → 重取合成幀（generation guard 防舊回應覆蓋）。
   // 只送 visible 的部位 + body/head：隱藏的部位（例如帽子）不能觸發後端遮髮，所以不送。
   useEffect(() => {
     if (!skin) return;
@@ -115,7 +139,7 @@ export function AvatarPage({ visible, cashOnly }: { visible: boolean; cashOnly: 
     }
     setFramesLoading(true);
     setFramesError(null);
-    getAvatarFrames(partInputs, action, emotion)
+    getAvatarFrames(partInputs, action, emotion, hairCover)
       .then((result) => {
         if (generation === framesGenerationRef.current) setFrames(result);
       })
@@ -125,7 +149,7 @@ export function AvatarPage({ visible, cashOnly }: { visible: boolean; cashOnly: 
       .finally(() => {
         if (generation === framesGenerationRef.current) setFramesLoading(false);
       });
-  }, [skin, action, emotion, parts]);
+  }, [skin, action, emotion, parts, hairCover]);
 
   // 穿上（同 slot 取代），含 longcoat 互斥（移植自參考專案 WzComparerR2.Avatar）。
   const equip = useCallback((slot: EquipSlot, id: string) => {
@@ -153,6 +177,23 @@ export function AvatarPage({ visible, cashOnly }: { visible: boolean; cashOnly: 
       return next;
     });
   }, []);
+
+  // 換髮色/臉色：記住選擇；已穿著的同 slot 部位立即換成同造型的新顏色
+  // （該造型沒有此色時退回顏色 0）。
+  const changeColor = useCallback(
+    (slot: "hair" | "face", color: number) => {
+      if (slot === "hair") setHairColor(color);
+      else setFaceColor(color);
+      setParts((previous) => {
+        const part = previous[slot];
+        if (!part) return previous;
+        const nextId = resolveColorVariant(slot, part.id, color, idExists);
+        if (nextId === part.id) return previous;
+        return { ...previous, [slot]: { ...part, id: nextId } };
+      });
+    },
+    [idExists],
+  );
 
   const toggleVisible = useCallback((slot: EquipSlot) => {
     setParts((previous) => {
@@ -194,6 +235,11 @@ export function AvatarPage({ visible, cashOnly }: { visible: boolean; cashOnly: 
               emotions={emotions}
               emotion={emotion}
               onEmotionChange={setEmotion}
+              hairColor={hairColor}
+              faceColor={faceColor}
+              onColorChange={changeColor}
+              hairCover={hairCover}
+              onHairCoverChange={setHairCover}
               playing={playing}
               onTogglePlaying={() => setPlaying((previous) => !previous)}
               parts={parts}
@@ -208,8 +254,11 @@ export function AvatarPage({ visible, cashOnly }: { visible: boolean; cashOnly: 
             equipment={equipment}
             parts={parts}
             cashOnly={cashOnly}
+            hairColor={hairColor}
+            faceColor={faceColor}
             onEquip={equip}
             onRemove={removePart}
+            onPickItem={onPickItem}
           />
         </section>
       </>

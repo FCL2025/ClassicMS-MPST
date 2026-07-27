@@ -92,6 +92,8 @@ export default function App() {
   const [avatarActivated, setAvatarActivated] = useState(false);
   // 紙娃娃商店的「點裝」開關：ON 時只列 cash 裝備（App 持有，切 view 不重置）。
   const [cashOnly, setCashOnly] = useState(false);
+  // 紙娃娃最後點選的裝備 img 路徑（footer 麵包屑用）。
+  const [avatarPick, setAvatarPick] = useState<string | null>(null);
   const treeWidthRef = useRef(treeWidth);
   const childrenMapRef = useRef(childrenMap);
   const childRequestsRef = useRef(new Map<string, Promise<void>>());
@@ -308,21 +310,6 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <ExportMenu
-          canExportPng={
-            selected?.kind === "Node" &&
-            (selected.type_tag === 18 ||
-              selected.type_tag === 19 ||
-              selected.type_tag === 12)
-          }
-          nodeName={selected?.name ?? null}
-          path={detailPath}
-          onMessage={(message, tone = "success") => {
-            setToast({ message, tone });
-            setStatus(message);
-          }}
-          onShowChangelog={() => setShowChangelog(true)}
-        />
         <div className="view-tabs" role="tablist" aria-label="檢視切換">
           <button
             type="button"
@@ -348,6 +335,22 @@ export default function App() {
             紙娃娃
           </button>
         </div>
+        <div className="header-divider" aria-hidden="true" />
+        <ExportMenu
+          canExportPng={
+            selected?.kind === "Node" &&
+            (selected.type_tag === 18 ||
+              selected.type_tag === 19 ||
+              selected.type_tag === 12)
+          }
+          nodeName={selected?.name ?? null}
+          path={detailPath}
+          onMessage={(message, tone = "success") => {
+            setToast({ message, tone });
+            setStatus(message);
+          }}
+          onShowChangelog={() => setShowChangelog(true)}
+        />
         <div className="header-spacer" />
         {view === "avatar" ? (
           <label className="cash-switch" title="只顯示點數裝備">
@@ -449,7 +452,11 @@ export default function App() {
               />
             ) : null}
             {avatarActivated || view === "avatar" ? (
-              <AvatarPage visible={view === "avatar"} cashOnly={cashOnly} />
+              <AvatarPage
+                visible={view === "avatar"}
+                cashOnly={cashOnly}
+                onPickItem={setAvatarPick}
+              />
             ) : null}
           </main>
         </div>
@@ -489,11 +496,23 @@ export default function App() {
       ) : null}
       <div className="sr-only" role="status" aria-live="polite">{status}</div>
       <ChangelogDialog open={showChangelog} onClose={() => setShowChangelog(false)} />
-      <footer className="app-footer" title={selected?.path ?? undefined}>
-        <span className="footer-node-type">
-          {selected ? `類型：${selectedTypeLabel(selected)}` : ""}
-        </span>
-        <span className="footer-node-path">{selected?.path ?? ""}</span>
+      <footer
+        className="app-footer"
+        title={view === "avatar" ? (avatarPick ?? undefined) : (selected?.path ?? undefined)}
+      >
+        {view === "avatar" ? (
+          <>
+            <span className="footer-node-type">{avatarPick ? "類型：img" : ""}</span>
+            <span className="footer-node-path">{avatarPick ?? ""}</span>
+          </>
+        ) : (
+          <>
+            <span className="footer-node-type">
+              {selected ? `類型：${selectedTypeLabel(selected)}` : ""}
+            </span>
+            <span className="footer-node-path">{selected?.path ?? ""}</span>
+          </>
+        )}
         <span className="footer-version">v{APP_VERSION}</span>
       </footer>
     </div>

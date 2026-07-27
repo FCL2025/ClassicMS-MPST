@@ -234,8 +234,12 @@ export const getAvatarEmotions = (faceId: string) =>
 
 export const getAvatarEquipment = () => rpc<EquipItem[]>("getAvatarEquipment");
 
-export const getAvatarFrames = (parts: PartInput[], action: string, emotion: string) =>
-  rpc<AvatarFrames>("getAvatarFrames", parts, action, emotion);
+export const getAvatarFrames = (
+  parts: PartInput[],
+  action: string,
+  emotion: string,
+  hairCover: boolean,
+) => rpc<AvatarFrames>("getAvatarFrames", parts, action, emotion, hairCover);
 
 interface WasmFileExport {
   filename: string;

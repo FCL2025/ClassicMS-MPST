@@ -78,6 +78,14 @@ textarea:focus-visible,
   margin-left: auto;
 }
 
+/* 頁籤與「匯出」之間的短垂直分隔線（header flex 垂直置中）。 */
+.header-divider {
+  width: 1px;
+  height: 18px;
+  flex: 0 0 auto;
+  background: var(--border-strong);
+}
+
 .icon-button {
   display: inline-grid;
   width: 32px;
@@ -1892,37 +1900,36 @@ textarea:focus-visible,
 
 /* ===== 紙娃娃 ===== */
 
-/* header 的檢視切換頁籤（瀏覽 / 紙娃娃）。 */
+/* header 的檢視切換頁籤（瀏覽 / 紙娃娃）：shadcn Tabs「Line」風格——
+   透明底、無外框，作用中頁籤以底部 2px 線條標示。 */
 .view-tabs {
   display: inline-flex;
   flex: 0 0 auto;
-  gap: 4px;
+  gap: 8px;
 }
 
 .view-tabs button {
   min-height: 32px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--button-bg);
-  color: var(--text-strong);
-  padding: 0 12px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 0 4px;
   font-size: 0.75rem;
   font-weight: 700;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease;
 }
 
 .view-tabs button:not(:disabled):not(.is-active):hover {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.view-tabs button.is-active:not(:disabled):hover {
-  filter: brightness(0.92);
+  color: var(--text-strong);
 }
 
 .view-tabs button.is-active {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--on-accent);
+  border-bottom-color: var(--accent);
+  color: var(--text-strong);
 }
 
 .view-tabs button:disabled {
@@ -2021,6 +2028,36 @@ textarea:focus-visible,
 .avatar-action-row select {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+/* 臉型顏色 / 髮型顏色：左右並排（label/select 沿用 .avatar-control-row 樣式）。 */
+.avatar-color-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.avatar-color-field {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+/* 帽子遮髮核取方塊（hairCover）。 */
+.avatar-hair-cover {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-strong);
+  font-size: 0.75rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.avatar-hair-cover input {
+  margin: 0;
+  accent-color: var(--accent);
 }
 
 .avatar-play-button {

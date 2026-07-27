@@ -16,7 +16,7 @@
 
 - **對齊**：每張 PNG 有 `map` 錨點（hand/head/navel...），各部位同名錨點互相咬合（對應 `AvatarCanvas.CreateBone/AppendBone/GenerateLayer`），不靠固定 offset。
 - **圖層順序**：`z` 是字串圖層名；參考專案讀 `Base/zmap.img` 決定順序（索引大者先畫）。WZJS 資料無 zmap → 內嵌 v83 標準 zmap 排序表。
-- **帽子遮髮**：HairCover 布林切換 `hairOverHead`/`backHairOverCape` 與 `hair`/`backHairBelowCap` 兩組貼圖；本專案自動判定（有裝帽子 → cover）。
+- **帽子遮髮**：HairCover 布林切換 `hairOverHead`/`backHairOverCape` 與 `hair`/`backHairBelowCap` 兩組貼圖；預設有裝帽子 → cover，左下「帽子遮髮」核取方塊可手動切換（不勾 = 髮型超出帽子）。
 - **longcoat 互斥**：穿上衣/褲裙 → 套服隱藏；穿套服時若上衣/褲裙可見 → 套服隱藏。
 - **body↔head 膚色連動**：`headID = 10000 + bodyID % 10000`。
 - **動作/表情**：獨立幀序列各自播放再合成；head 找不到動作退回 `front`，hair 退回 `stand1`。
@@ -74,6 +74,15 @@
 ## 修正記錄（2026-07-27，使用者回報）
 
 - **臉型位置跑掉**：第二輪把預覽繪製抽進 `avatarExport.ts` 共用時，`composeFrame`/`computeBoundingBox` 退回舊邏輯（face 直接當絕對座標、疊最上），把第一輪「face 相對 brow + faceAnchor 即時配對 + z 交錯」的修復弄丟了。修法：把 `composeLayers`（faceAnchor 配對 + z 遞減合併）放回 `avatarExport.ts` 作為唯一合成入口，`composeFrame` 與 `computeBoundingBox` 都走它——預覽與匯出（PNG/GIF/WebP）從此不可能再分叉。
+- **部分髮型圖示空白、穿上變光頭（如 00030160 一線頭）**：這類髮型 `default` 只有一張 z="hair" 的 canvas、沒有 `hairOverHead` 變體。兩個問題：① icon 路徑寫死 `default/hairOverHead` 取不到圖 → `loadAvatarIcon` 加 fallback 退用 `default/hair`；② 無帽遮髮規則把 z="hair" 當「帽下變體」藏掉，整個髮型被藏光 → `avatar_frames` 改為無帽時若該幀髮型 canvas 會全被藏掉則全部保留（有帽行為不變）。三張 canvas 匯出 PNG 實測確認都是真貼圖。
+- **footer 麵包屑不跟紙娃娃選擇**：點商店卡片（穿上或脫下）時回報該裝備 img 路徑（如 `Character/Hair/00030160`），avatar view 的 footer 改顯示它；`slotImgPath` 對齊後端 `img_key_of`（飾品類都在 Accessory）。
+
+## 第三輪功能（2026-07-27）
+
+1. **髮型/臉型顏色**：商店列表同造型只顯示一張卡（預設色，即顏色 0）；左下「動作」下方新增左右並排的「臉型顏色 / 髮型顏色」下拉（黑/紅/橙/黃/綠/藍/紫/褐）。穿上時套用選取色、換色時已穿部位即時換色（該造型無此色退回顏色 0）；未穿臉型時預設臉也跟著臉色走。邏輯集中在前端 `src/components/avatarColor.ts`。
+   - **顏色編碼（對正式資料驗證）**：髮型末碼是顏色（0003XXX**0–7**）；臉型**百位數**是顏色（0002C**X**SS 的 X，+100 一色，如 很專心臉型 = 00020016/00020116…00020716、女版系列 00021016–00021716，0005xxxx 臉同規則）。顏色皆 0–7。注意臉型**不是**末碼（00020000–00020023 是連號的不同造型）；同名不同系列（如 企鵝臉型 00025023/00026029）是不同造型，分組要用「去掉顏色位的基底 id」而非名稱。
+   - 髮型卡片顯示名去掉開頭顏色詞（如 黑色短中分 → 短中分）；title 保留全名+id。
+2. **帽子遮髮（hairCover）核取方塊**：左下顏色選擇下方，預設勾選。對齊 WzComparerR2 `AvatarCanvas` 的 HairCover 過濾（`AvatarCanvas.cs:723-727`）：勾選 + 有戴帽 → 藏 `hairOverHead`/`backHairOverCape`/`backHair`；不勾 → 藏 `hair`/`backHairBelowCap*`（髮型超出帽子）。無帽時無效果。實作：`get_avatar_frames` 全鏈路（gui.rs / wasm lib.rs / api.ts / api.web.ts / worker.ts）加 `hair_cover` 參數，後端 `有效遮髮 = 有戴帽 && 勾選`。
 
 ## 實作摘要（2026-07-26 完成）
 

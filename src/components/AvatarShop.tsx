@@ -1,6 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { getImage, type EquipItem } from "../api";
 import type { EquipSlot, PartsState } from "./AvatarPage";
+import {
+  dedupeColorVariants,
+  resolveColorVariant,
+  splitColorId,
+  stripColorPrefix,
+} from "./avatarColor";
 
 // 部位 tab（顯示順序固定）；AvatarEquipPanel 的「目前裝備」清單也用這份順序。
 export const SLOT_TABS: readonly { slot: EquipSlot; label: string }[] = [
@@ -26,15 +32,20 @@ const CARD_ROW_PX = 64 + 7;
 // icon dataURL 快取（module-level）：裝備近七千件，只抓看過的，看過就不再抓。
 const iconCache = new Map<string, Promise<string | null>>();
 
-// 依 iconPath 載入 icon；部分裝備只有 iconRaw，icon 取不到時換 iconRaw 重試一次。
+// 依 iconPath 載入 icon；取不到時依路徑型態試替代節點：
+// 裝備 info/icon → info/iconRaw；髮型 default/hairOverHead → default/hair
+// （有些髮型只有 hair 一張貼圖，如 00030160）。
 export function loadAvatarIcon(path: string): Promise<string | null> {
   let cached = iconCache.get(path);
   if (!cached) {
     cached = (async () => {
       const result = await getImage(path).catch(() => null);
       if (result) return `data:image/png;base64,${result.base64}`;
-      const fallback = path.replace(/info\/icon$/, "info/iconRaw");
-      if (fallback !== path) {
+      for (const fallback of [
+        path.replace(/info\/icon$/, "info/iconRaw"),
+        path.replace(/default\/hairOverHead$/, "default/hair"),
+      ]) {
+        if (fallback === path) continue;
         const retry = await getImage(fallback).catch(() => null);
         if (retry) return `data:image/png;base64,${retry.base64}`;
       }
@@ -91,9 +102,29 @@ function AvatarShopCard({
       onClick={onToggle}
     >
       <span className="avatar-shop-card-icon">{icon ? <img src={icon} alt="" /> : null}</span>
-      <span className="avatar-shop-card-name">{item.name}</span>
+      <span className="avatar-shop-card-name">
+        {item.slot === "hair" || item.slot === "face" ? stripColorPrefix(item.name) : item.name}
+      </span>
     </button>
   );
+}
+
+// slot + id → img 節點路徑（對齊後端 avatar.rs 的 img_key_of；耳環/臉飾/眼飾都在 Accessory）。
+function slotImgPath(slot: EquipSlot, id: string): string {
+  const dirs: Partial<Record<EquipSlot, string>> = {
+    hair: "Hair",
+    face: "Face",
+    cap: "Cap",
+    coat: "Coat",
+    longcoat: "Longcoat",
+    pants: "Pants",
+    shoes: "Shoes",
+    glove: "Glove",
+    shield: "Shield",
+    cape: "Cape",
+    weapon: "Weapon",
+  };
+  return `Character/${dirs[slot] ?? "Accessory"}/${id}`;
 }
 
 interface AvatarShopProps {
@@ -101,12 +132,26 @@ interface AvatarShopProps {
   parts: PartsState;
   /** 只列點裝（cash === true）；tab 不過濾、卡片過濾。 */
   cashOnly: boolean;
+  /** 目前選取的髮色/臉色（0–7），穿上髮型/臉型時套用。 */
+  hairColor: number;
+  faceColor: number;
   onEquip: (slot: EquipSlot, id: string) => void;
   onRemove: (slot: EquipSlot) => void;
+  /** 點卡片時回報該裝備的 img 路徑（給 footer 麵包屑）。 */
+  onPickItem?: (path: string) => void;
 }
 
 // 右側試穿商店：部位 tab + 卡片 grid + 動態分頁（欄×列由 ResizeObserver 量出）。
-export function AvatarShop({ equipment, parts, cashOnly, onEquip, onRemove }: AvatarShopProps) {
+export function AvatarShop({
+  equipment,
+  parts,
+  cashOnly,
+  hairColor,
+  faceColor,
+  onEquip,
+  onRemove,
+  onPickItem,
+}: AvatarShopProps) {
   const [activeSlot, setActiveSlot] = useState<EquipSlot>("cap");
   const [page, setPage] = useState(0);
   // 初次渲染、尚未量測前的暫用每頁數；之後由可用高度 × 欄數動態決定。
@@ -148,7 +193,13 @@ export function AvatarShop({ equipment, parts, cashOnly, onEquip, onRemove }: Av
   }, [equipment]);
 
   const allItems = itemsBySlot.get(activeSlot) ?? [];
-  const items = cashOnly ? allItems.filter((item) => item.cash) : allItems;
+  // 髮型/臉型同一造型有多個顏色 id，列表只留預設色那張卡。
+  const items = useMemo(() => {
+    const filtered = cashOnly ? allItems.filter((item) => item.cash) : allItems;
+    return dedupeColorVariants(activeSlot, filtered);
+  }, [allItems, cashOnly, activeSlot]);
+  // 換色時查 variant 是否存在用（全裝備 id 集合）。
+  const equipmentIds = useMemo(() => new Set(equipment.map((item) => item.id)), [equipment]);
   const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
   const currentPage = Math.min(page, totalPages - 1);
   const pageItems = items.slice(currentPage * pageSize, currentPage * pageSize + pageSize);
@@ -182,16 +233,33 @@ export function AvatarShop({ equipment, parts, cashOnly, onEquip, onRemove }: Av
           <div className="avatar-shop-grid" ref={gridRef}>
             {pageItems.map((item) => {
               const slot = item.slot as EquipSlot;
-              const worn = parts[slot]?.id === item.id;
+              // 髮型/臉型：已穿的是同造型任一顏色就算穿著。
+              const wornId = parts[slot]?.id;
+              const wornSplit = wornId ? splitColorId(slot, wornId) : null;
+              const itemSplit = splitColorId(slot, item.id);
+              const worn =
+                wornId != null &&
+                (wornId === item.id ||
+                  (wornSplit != null && itemSplit != null && wornSplit.base === itemSplit.base));
               return (
                 <AvatarShopCard
                   key={item.id}
                   item={item}
                   worn={worn}
                   onToggle={() => {
-                    // 點已穿的卡片 → 脫下；否則穿上（同 slot 取代）。
-                    if (worn) onRemove(slot);
-                    else onEquip(slot, item.id);
+                    // 點已穿的卡片 → 脫下；否則穿上（同 slot 取代），
+                    // 髮型/臉型套用目前選取的顏色。麵包屑跟著顯示該裝備路徑。
+                    if (worn) {
+                      onRemove(slot);
+                      onPickItem?.(slotImgPath(slot, wornId!));
+                    } else {
+                      const color = slot === "hair" ? hairColor : faceColor;
+                      const id = resolveColorVariant(slot, item.id, color, (candidate) =>
+                        equipmentIds.has(candidate),
+                      );
+                      onEquip(slot, id);
+                      onPickItem?.(slotImgPath(slot, id));
+                    }
                   }}
                 />
               );

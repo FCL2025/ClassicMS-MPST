@@ -169,8 +169,12 @@ export const getAvatarMeta = () => invoke<AvatarMeta>("get_avatar_meta");
 export const getAvatarEmotions = (faceId: string) =>
   invoke<string[]>("get_avatar_emotions", { faceId });
 export const getAvatarEquipment = () => invoke<EquipItem[]>("get_avatar_equipment");
-export const getAvatarFrames = (parts: PartInput[], action: string, emotion: string) =>
-  invoke<AvatarFrames>("get_avatar_frames", { parts, action, emotion });
+export const getAvatarFrames = (
+  parts: PartInput[],
+  action: string,
+  emotion: string,
+  hairCover: boolean,
+) => invoke<AvatarFrames>("get_avatar_frames", { parts, action, emotion, hairCover });
 export const searchNodes = (query: string, limit = 200) =>
   invoke<string[]>("search_nodes", { query, limit });
 export const exportSubtree = (path: string) => invoke<ExportStats>("export_subtree", { path });
