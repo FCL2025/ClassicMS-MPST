@@ -8,6 +8,7 @@ import {
   type PointerEvent,
 } from "react";
 import {
+  getAudio,
   initialDataDir,
   initialPath,
   listChildren,
@@ -92,6 +93,10 @@ export default function App() {
   const [avatarActivated, setAvatarActivated] = useState(false);
   // 紙娃娃商店的「點裝」開關：ON 時只列 cash 裝備（App 持有，切 view 不重置）。
   const [cashOnly, setCashOnly] = useState(false);
+  // 紙娃娃 BGM：切到紙娃娃 tab 時循環播放 Sound/BgmUI/ShopBgm；false 表示使用者手動暫停。
+  const [bgmOn, setBgmOn] = useState(true);
+  const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
+  const bgmUrlRef = useRef<string | null>(null);
   // 紙娃娃最後點選的裝備 img 路徑（footer 麵包屑用）。
   const [avatarPick, setAvatarPick] = useState<string | null>(null);
   const treeWidthRef = useRef(treeWidth);
@@ -106,6 +111,38 @@ export default function App() {
     childrenMapRef.current = next;
     setChildrenMap(next);
   }, []);
+
+  // 紙娃娃 BGM：view 切到 avatar 且未手動暫停時播放（單曲循環），離開或暫停時停下。
+  // AudioClip 內容是 Ogg Vorbis；blob URL 與 <audio> 元素只做一次，暫停會保留播放位置。
+  useEffect(() => {
+    if (view !== "avatar" || !bgmOn) {
+      bgmAudioRef.current?.pause();
+      return;
+    }
+    let cancelled = false;
+    const play = async () => {
+      try {
+        if (!bgmUrlRef.current) {
+          const result = await getAudio("Sound/BgmUI/ShopBgm");
+          const bytes = Uint8Array.from(atob(result.base64), (c) => c.charCodeAt(0));
+          bgmUrlRef.current = URL.createObjectURL(new Blob([bytes], { type: "audio/ogg" }));
+        }
+        if (cancelled) return;
+        if (!bgmAudioRef.current) {
+          const audio = new Audio(bgmUrlRef.current);
+          audio.loop = true;
+          bgmAudioRef.current = audio;
+        }
+        await bgmAudioRef.current.play();
+      } catch (error) {
+        if (!cancelled) setStatus(`背景音樂播放失敗：${String(error)}`);
+      }
+    };
+    void play();
+    return () => {
+      cancelled = true;
+    };
+  }, [view, bgmOn]);
 
   const loadDataDirectory = useCallback(async (path: string) => {
     const generation = ++datasetGenerationRef.current;
@@ -353,17 +390,28 @@ export default function App() {
         />
         <div className="header-spacer" />
         {view === "avatar" ? (
-          <label className="cash-switch" title="只顯示點數裝備">
-            <input
-              type="checkbox"
-              checked={cashOnly}
-              onChange={(event) => setCashOnly(event.target.checked)}
-            />
-            <span className="cash-switch-track" aria-hidden="true">
-              <span className="cash-switch-thumb" />
-            </span>
-            點裝
-          </label>
+          <>
+            <button
+              className="icon-button"
+              type="button"
+              onClick={() => setBgmOn((on) => !on)}
+              title={bgmOn ? "暫停背景音樂" : "播放背景音樂"}
+              aria-label={bgmOn ? "暫停背景音樂" : "播放背景音樂"}
+            >
+              {bgmOn ? "⏸" : "▶"}
+            </button>
+            <label className="cash-switch" title="只顯示點數裝備">
+              <input
+                type="checkbox"
+                checked={cashOnly}
+                onChange={(event) => setCashOnly(event.target.checked)}
+              />
+              <span className="cash-switch-track" aria-hidden="true">
+                <span className="cash-switch-thumb" />
+              </span>
+              點裝
+            </label>
+          </>
         ) : null}
         <button
           className="data-folder-button"
