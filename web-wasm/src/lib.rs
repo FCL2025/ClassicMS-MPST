@@ -133,9 +133,13 @@ pub fn get_node(path: &str) -> Result<JsValue, JsValue> {
 }
 
 #[wasm_bindgen]
-pub fn search_nodes(query: &str, limit: Option<u32>) -> Result<JsValue, JsValue> {
+pub fn search_nodes(
+    query: &str,
+    scope: Option<String>,
+    limit: Option<u32>,
+) -> Result<JsValue, JsValue> {
     let limit = limit.map_or(200, |l| l as usize).min(2_000);
-    with_service(|s| Ok(s.search(query, limit))).and_then(|v| to_js(&v))
+    with_service(|s| Ok(s.search_hits(query, scope.as_deref(), limit))).and_then(|v| to_js(&v))
 }
 
 /// 裝備 tooltip：回 `ItemTooltip`（camelCase）或 `null`（非裝備路徑）。

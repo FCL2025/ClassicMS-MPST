@@ -470,7 +470,11 @@ export default function App() {
                   onSelect={setSelected}
                 />
                 <div className="tree-panel-heading">
-                  <SearchBar onPick={onPickSearchResult} />
+                  <SearchBar
+                    scope={selected?.path ?? null}
+                    onClearScope={() => setSelected(null)}
+                    onPick={onPickSearchResult}
+                  />
                 </div>
               </aside>
               <div

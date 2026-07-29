@@ -413,17 +413,6 @@ impl Catalog {
         }
         out.into_values().collect()
     }
-
-    /// 子字串搜尋（不分大小寫），最多 limit 筆。
-    pub fn search(&self, query: &str, limit: usize) -> Vec<String> {
-        let q = query.to_lowercase();
-        self.entries
-            .keys()
-            .filter(|k| k.to_lowercase().contains(&q))
-            .take(limit)
-            .cloned()
-            .collect()
-    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -494,6 +483,7 @@ pub struct DataService {
     image_cache: Mutex<ImageCache>,
     pub(crate) tooltip_name_cache: crate::item_tooltip::TooltipNameCache,
     pub(crate) commodity_name_cache: crate::commodity::CommodityNameCache,
+    pub(crate) search_index_cache: crate::search::SearchIndexCache,
 }
 
 #[derive(Default)]
@@ -587,6 +577,7 @@ impl DataService {
             image_cache: Mutex::new(ImageCache::default()),
             tooltip_name_cache: Default::default(),
             commodity_name_cache: Default::default(),
+            search_index_cache: Default::default(),
         };
         service.validate_locations()?;
         Ok((service, info))
@@ -624,6 +615,7 @@ impl DataService {
             image_cache: Mutex::new(ImageCache::default()),
             tooltip_name_cache: Default::default(),
             commodity_name_cache: Default::default(),
+            search_index_cache: Default::default(),
         };
         service.validate_locations()?;
         Ok((service, info))
@@ -768,10 +760,6 @@ impl DataService {
                 .collect(),
             text_asset: None,
         })
-    }
-
-    pub fn search(&self, query: &str, limit: usize) -> Vec<String> {
-        self.catalog.search(query, limit)
     }
 
     /// 讀 AudioClip 物件本身（不含聲音資料）。

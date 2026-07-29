@@ -219,8 +219,13 @@ export const getAudio = async (path: string): Promise<AudioResult> => {
   return { base64: uint8ToBase64(bytes) };
 };
 
-export const searchNodes = (query: string, limit = 200) =>
-  rpc<string[]>("searchNodes", query, limit);
+export interface SearchHit {
+  path: string;
+  name: string | null;
+}
+
+export const searchNodes = (query: string, scope?: string | null, limit = 200) =>
+  rpc<SearchHit[]>("searchNodes", query, scope ?? null, limit);
 
 export const getItemTooltip = (path: string) =>
   rpc<ItemTooltip | null>("getItemTooltip", path);
@@ -291,6 +296,18 @@ export const openExternal = (url: string): Promise<void> => {
 /** web 沒有原生儲存對話框,直接回預設檔名(實際下載由 exportFile 觸發)。 */
 export const pickExportPath = (options: ExportDialogOptions): Promise<string | null> =>
   Promise.resolve(options.defaultName);
+
+/** web 版：無另存對話框，base64 內容直接觸發瀏覽器下載，一律視為已存。 */
+export const saveBinaryFile = (
+  defaultName: string,
+  _label: string,
+  extension: string,
+  base64: string,
+): Promise<boolean> => {
+  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+  downloadBytes(defaultName, bytes, `image/${extension}`);
+  return Promise.resolve(true);
+};
 
 /** 訂閱 OPFS 複製 / 索引建立進度;回傳取消訂閱函式。 */
 export const onProgress = (listener: (progress: ImportProgress | null) => void): (() => void) =>

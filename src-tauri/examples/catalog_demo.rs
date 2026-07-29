@@ -88,15 +88,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // ── 搜尋 ──
     let t0 = std::time::Instant::now();
-    let hits = svc.search("afterimage", 10);
+    let hits = svc.search_hits("afterimage", None, 10);
     println!(
         "\nsearch(\"afterimage\") → {} 筆（{:.2?}）: {:?}",
         hits.len(),
         t0.elapsed(),
         hits
     );
-    let hits = svc.search("00020116", 10);
+    let hits = svc.search_hits("00020116", None, 10);
     println!("search(\"00020116\") → {} 筆: {:?}", hits.len(), hits);
+
+    // ── 名稱搜尋（String/TW/Item、Pet）＋範圍限定 ──
+    let t0 = std::time::Instant::now();
+    let hits = svc.search_hits("綠色斗笠", None, 10);
+    println!(
+        "\nsearch(名稱 \"綠色斗笠\") → {} 筆（首次建索引 {:.2?}）: {:?}",
+        hits.len(),
+        t0.elapsed(),
+        hits
+    );
+    let hits = svc.search_hits("斗笠", Some("Character/Cap"), 10);
+    println!("search(\"斗笠\", scope=Character/Cap) → {} 筆: {:?}", hits.len(), hits);
+    let hits = svc.search_hits("斗笠", Some("Item/Consume"), 10);
+    println!("search(\"斗笠\", scope=Item/Consume) → {} 筆（應為 0）: {:?}", hits.len(), hits);
+    let hits = svc.search_hits("紅色藥水", None, 5);
+    println!("search(名稱 \"紅色藥水\") → {} 筆: {:?}", hits.len(), hits);
 
     // ── 第二次開啟（快取命中，應秒開）──
     let (svc2, info2) = DataService::open(&root, &cache)?;

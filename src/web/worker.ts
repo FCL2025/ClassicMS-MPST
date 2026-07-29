@@ -236,7 +236,11 @@ async function dispatch(method: string, args: unknown[]): Promise<unknown> {
         args[3] as boolean,
       );
     case "searchNodes":
-      return wasm.search_nodes(args[0] as string, (args[1] as number | undefined) ?? null);
+      return wasm.search_nodes(
+        args[0] as string,
+        (args[1] as string | null | undefined) ?? null,
+        (args[2] as number | undefined) ?? null,
+      );
     case "exportFile":
       return wasm.export_file(args[0] as string, args[1] as string);
     case "exportSubtree":

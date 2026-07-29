@@ -343,13 +343,14 @@ async fn get_avatar_frames(
 #[tauri::command]
 async fn search_nodes(
     query: String,
+    scope: Option<String>,
     limit: Option<usize>,
     state: State<'_, AppState>,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<crate::search::SearchHit>, String> {
     let state = state.inner().clone();
     blocking(move || {
         let (service, _) = state.current_or_open(None)?;
-        Ok(service.search(&query, limit.unwrap_or(200).min(2_000)))
+        Ok(service.search_hits(&query, scope.as_deref(), limit.unwrap_or(200).min(2_000)))
     })
     .await
 }
@@ -399,6 +400,16 @@ fn initial_data_dir() -> Option<String> {
         .filter(|path| !path.is_empty())
 }
 
+/// 前端 canvas 產生的圖檔（base64）寫到使用者從另存對話框選的路徑。
+#[tauri::command]
+async fn write_binary_file(output_path: String, base64: String) -> Result<(), String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(base64)
+        .map_err(|error| error.to_string())?;
+    blocking(move || std::fs::write(&output_path, &bytes).map_err(|error| error.to_string())).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -432,7 +443,8 @@ pub fn run() {
             export_subtree,
             export_file,
             initial_path,
-            initial_data_dir
+            initial_data_dir,
+            write_binary_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -175,8 +175,13 @@ export const getAvatarFrames = (
   emotion: string,
   hairCover: boolean,
 ) => invoke<AvatarFrames>("get_avatar_frames", { parts, action, emotion, hairCover });
-export const searchNodes = (query: string, limit = 200) =>
-  invoke<string[]>("search_nodes", { query, limit });
+export interface SearchHit {
+  path: string;
+  name: string | null;
+}
+
+export const searchNodes = (query: string, scope?: string | null, limit = 200) =>
+  invoke<SearchHit[]>("search_nodes", { query, scope: scope ?? null, limit });
 export const exportSubtree = (path: string) => invoke<ExportStats>("export_subtree", { path });
 export const exportFile = (path: string, format: ExportFormat, outputPath: string) =>
   invoke<FileExportResult>("export_file", { path, format, outputPath });
@@ -225,6 +230,26 @@ export const pickExportPath = (options: ExportDialogOptions): Promise<string | n
       },
     ],
   });
+
+/**
+ * 桌面版：跳出另存對話框，把前端產生的 base64 內容寫到選擇的路徑。
+ * 回傳是否真的有存（使用者取消為 false）。web 版在 api.web.ts 改為瀏覽器下載。
+ */
+export const saveBinaryFile = async (
+  defaultName: string,
+  label: string,
+  extension: string,
+  base64: string,
+): Promise<boolean> => {
+  const outputPath = await save({
+    title: "儲存圖片",
+    defaultPath: defaultName,
+    filters: [{ name: label, extensions: [extension] }],
+  });
+  if (!outputPath) return false;
+  await invoke<void>("write_binary_file", { outputPath, base64 });
+  return true;
+};
 
 /** type tag → 顯示標籤（對齊 wzjs/node.rs）。 */
 export function typeLabel(tag: number): string {

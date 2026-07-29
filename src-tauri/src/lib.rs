@@ -12,6 +12,7 @@ pub mod export;
 pub mod gui;
 pub mod image;
 pub mod item_tooltip;
+pub mod search;
 pub mod unity;
 #[cfg(target_arch = "wasm32")]
 pub mod wasm_shims;
