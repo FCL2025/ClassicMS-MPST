@@ -165,12 +165,20 @@ async function syncBundlesToOpfs(files: File[]): Promise<BundleMeta[]> {
   }
 
   // 寫入 manifest sidecar,下次比對用。
+  // 注意:Safari/Firefox 不支援 createWritable,這裡與 bundle 複製一樣
+  // 走 Worker 專用的 createSyncAccessHandle。
   const sidecar = await root.getFileHandle(MANIFEST_SIDECAR, { create: true });
-  const writable = await sidecar.createWritable();
-  const record: Record<string, { size: number; lastModified: number }> = {};
-  for (const m of manifest) record[m.name] = { size: m.size, lastModified: m.lastModified };
-  await writable.write(JSON.stringify(record));
-  await writable.close();
+  const sync = await sidecar.createSyncAccessHandle();
+  try {
+    const record: Record<string, { size: number; lastModified: number }> = {};
+    for (const m of manifest) record[m.name] = { size: m.size, lastModified: m.lastModified };
+    const bytes = new TextEncoder().encode(JSON.stringify(record));
+    sync.truncate(0);
+    sync.write(bytes, { at: 0 });
+    sync.flush();
+  } finally {
+    sync.close();
+  }
 
   return manifest;
 }
