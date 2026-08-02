@@ -87,7 +87,7 @@ impl DataService {
     }
 
     /// 依道具 id 推出 icon 的候選節點路徑（按優先順序，逐一嘗試）。
-    fn icon_candidates(&self, item_id: u32) -> Vec<String> {
+    pub(crate) fn icon_candidates(&self, item_id: u32) -> Vec<String> {
         // 9 開頭（套裝組、欄位擴充等）：Special img 內的節點是 7 碼 id，
         // 且 icon 直接掛在節點下（沒有 info 層），與其他 img 不同。
         if item_id / 1_000_000 == 9 {

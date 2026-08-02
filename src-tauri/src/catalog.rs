@@ -484,6 +484,8 @@ pub struct DataService {
     pub(crate) tooltip_name_cache: crate::item_tooltip::TooltipNameCache,
     pub(crate) commodity_name_cache: crate::commodity::CommodityNameCache,
     pub(crate) search_index_cache: crate::search::SearchIndexCache,
+    pub(crate) monster_book_cache: crate::monster::MonsterBookCache,
+    pub(crate) monster_name_cache: crate::monster::MonsterNameCache,
 }
 
 #[derive(Default)]
@@ -578,6 +580,8 @@ impl DataService {
             tooltip_name_cache: Default::default(),
             commodity_name_cache: Default::default(),
             search_index_cache: Default::default(),
+            monster_book_cache: Default::default(),
+            monster_name_cache: Default::default(),
         };
         service.validate_locations()?;
         Ok((service, info))
@@ -616,6 +620,8 @@ impl DataService {
             tooltip_name_cache: Default::default(),
             commodity_name_cache: Default::default(),
             search_index_cache: Default::default(),
+            monster_book_cache: Default::default(),
+            monster_name_cache: Default::default(),
         };
         service.validate_locations()?;
         Ok((service, info))

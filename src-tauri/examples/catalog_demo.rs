@@ -108,9 +108,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         hits
     );
     let hits = svc.search_hits("斗笠", Some("Character/Cap"), 10);
-    println!("search(\"斗笠\", scope=Character/Cap) → {} 筆: {:?}", hits.len(), hits);
+    println!(
+        "search(\"斗笠\", scope=Character/Cap) → {} 筆: {:?}",
+        hits.len(),
+        hits
+    );
     let hits = svc.search_hits("斗笠", Some("Item/Consume"), 10);
-    println!("search(\"斗笠\", scope=Item/Consume) → {} 筆（應為 0）: {:?}", hits.len(), hits);
+    println!(
+        "search(\"斗笠\", scope=Item/Consume) → {} 筆（應為 0）: {:?}",
+        hits.len(),
+        hits
+    );
     let hits = svc.search_hits("紅色藥水", None, 5);
     println!("search(名稱 \"紅色藥水\") → {} 筆: {:?}", hits.len(), hits);
 

@@ -120,6 +120,67 @@ export interface CommodityItem {
   iconBase64: string | null;
 }
 
+/** 圖鑑清單中的掉落物參照（對齊 monster.rs 的 serde 輸出）。 */
+export interface DropRef {
+  itemId: number;
+  name: string | null;
+}
+
+/** 怪物圖鑑清單項目。 */
+export interface MonsterSummary {
+  mobId: number;
+  name: string | null;
+  level: number | null;
+  drops: DropRef[];
+}
+
+/** 怪物出沒地圖。 */
+export interface MapRef {
+  mapId: number;
+  name: string | null;
+}
+
+/** 怪物掉落物（含 icon）。 */
+export interface MobDropItem {
+  itemId: number;
+  name: string | null;
+  iconBase64: string | null;
+}
+
+/** Mob 動畫的一幀（base64 PNG + 播放資訊）。 */
+export interface MobFrame {
+  base64: string;
+  delay: number;
+  origin: [number, number];
+  width: number;
+  height: number;
+}
+
+/** 單一怪物的完整明細。 */
+export interface MobDetail {
+  mobId: number;
+  name: string | null;
+  level: number | null;
+  category: string | null;
+  description: string | null;
+  maxHp: number;
+  maxMp: number;
+  exp: number;
+  pad: number;
+  pdd: number;
+  mad: number;
+  mdd: number;
+  acc: number;
+  eva: number;
+  speed: number;
+  pushed: number;
+  bodyAttack: boolean;
+  undead: boolean;
+  maps: MapRef[];
+  drops: MobDropItem[];
+  frames: MobFrame[];
+}
+
 /** 紙娃娃膚色（對齊 avatar.rs 的 serde 輸出）。 */
 export interface SkinInfo {
   bodyId: string;
@@ -232,6 +293,10 @@ export const getItemTooltip = (path: string) =>
 
 export const getCommodityItems = () => rpc<CommodityItem[]>("getCommodityItems");
 
+export const getMonsterBook = () => rpc<MonsterSummary[]>("getMonsterBook");
+
+export const getMobDetail = (mobId: number) => rpc<MobDetail>("getMobDetail", mobId);
+
 export const getAvatarMeta = () => rpc<AvatarMeta>("getAvatarMeta");
 
 export const getAvatarEmotions = (faceId: string) =>
@@ -285,6 +350,7 @@ export const exportSubtree = async (path: string): Promise<ExportStats> => {
 };
 
 export const initialPath = (): Promise<string | null> => Promise.resolve(null);
+export const initialView = (): Promise<string | null> => Promise.resolve(null);
 export const initialDataDir = (): Promise<string | null> => Promise.resolve(null);
 
 /** web 版直接開新分頁。 */

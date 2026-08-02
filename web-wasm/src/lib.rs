@@ -154,6 +154,23 @@ pub fn get_commodity_items() -> Result<JsValue, JsValue> {
     with_service(|s| s.get_commodity_items().map_err(|e| e.to_string())).and_then(|v| to_js(&v))
 }
 
+/// 怪物圖鑑清單：回 `MonsterSummary[]`（camelCase），語意對齊 gui.rs 的 get_monster_book。
+#[wasm_bindgen]
+pub fn get_monster_book() -> Result<JsValue, JsValue> {
+    with_service(|s| {
+        s.get_monster_book()
+            .map(|book| (*book).clone())
+            .map_err(|e| e.to_string())
+    })
+    .and_then(|v| to_js(&v))
+}
+
+/// 單一怪物明細：回 `MobDetail`（camelCase），語意對齊 gui.rs 的 get_mob_detail。
+#[wasm_bindgen]
+pub fn get_mob_detail(mob_id: u32) -> Result<JsValue, JsValue> {
+    with_service(|s| s.get_mob_detail(mob_id).map_err(|e| e.to_string())).and_then(|v| to_js(&v))
+}
+
 /// 紙娃娃基本資料：回 `AvatarMeta`（camelCase），語意對齊 gui.rs 的 get_avatar_meta。
 #[wasm_bindgen]
 pub fn get_avatar_meta() -> Result<JsValue, JsValue> {

@@ -80,6 +80,67 @@ export interface ItemTooltip {
   statLines: TooltipStatLine[];
 }
 
+/** 圖鑑清單中的掉落物參照（對齊 monster.rs 的 serde 輸出）。 */
+export interface DropRef {
+  itemId: number;
+  name: string | null;
+}
+
+/** 怪物圖鑑清單項目。 */
+export interface MonsterSummary {
+  mobId: number;
+  name: string | null;
+  level: number | null;
+  drops: DropRef[];
+}
+
+/** 怪物出沒地圖。 */
+export interface MapRef {
+  mapId: number;
+  name: string | null;
+}
+
+/** 怪物掉落物（含 icon）。 */
+export interface MobDropItem {
+  itemId: number;
+  name: string | null;
+  iconBase64: string | null;
+}
+
+/** Mob 動畫的一幀（base64 PNG + 播放資訊）。 */
+export interface MobFrame {
+  base64: string;
+  delay: number;
+  origin: [number, number];
+  width: number;
+  height: number;
+}
+
+/** 單一怪物的完整明細。 */
+export interface MobDetail {
+  mobId: number;
+  name: string | null;
+  level: number | null;
+  category: string | null;
+  description: string | null;
+  maxHp: number;
+  maxMp: number;
+  exp: number;
+  pad: number;
+  pdd: number;
+  mad: number;
+  mdd: number;
+  acc: number;
+  eva: number;
+  speed: number;
+  pushed: number;
+  bodyAttack: boolean;
+  undead: boolean;
+  maps: MapRef[];
+  drops: MobDropItem[];
+  frames: MobFrame[];
+}
+
 export interface ExportStats {
   out_dir: string;
   json_files: number;
@@ -165,6 +226,9 @@ export const getAudio = (path: string) => invoke<AudioResult>("get_audio", { pat
 export const getItemTooltip = (path: string) =>
   invoke<ItemTooltip | null>("get_item_tooltip", { path });
 export const getCommodityItems = () => invoke<CommodityItem[]>("get_commodity_items");
+export const getMonsterBook = () => invoke<MonsterSummary[]>("get_monster_book");
+export const getMobDetail = (mobId: number) =>
+  invoke<MobDetail>("get_mob_detail", { mobId });
 export const getAvatarMeta = () => invoke<AvatarMeta>("get_avatar_meta");
 export const getAvatarEmotions = (faceId: string) =>
   invoke<string[]>("get_avatar_emotions", { faceId });
@@ -186,6 +250,7 @@ export const exportSubtree = (path: string) => invoke<ExportStats>("export_subtr
 export const exportFile = (path: string, format: ExportFormat, outputPath: string) =>
   invoke<FileExportResult>("export_file", { path, format, outputPath });
 export const initialPath = () => invoke<string | null>("initial_path");
+export const initialView = () => invoke<string | null>("initial_view");
 export const initialDataDir = () => invoke<string | null>("initial_data_dir");
 
 /** 以系統預設瀏覽器開啟外部連結（桌面版走 opener plugin）。 */

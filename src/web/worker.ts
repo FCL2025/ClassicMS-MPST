@@ -222,6 +222,10 @@ async function dispatch(method: string, args: unknown[]): Promise<unknown> {
       return wasm.get_item_tooltip(args[0] as string);
     case "getCommodityItems":
       return wasm.get_commodity_items();
+    case "getMonsterBook":
+      return wasm.get_monster_book();
+    case "getMobDetail":
+      return wasm.get_mob_detail(args[0] as number);
     case "getAvatarMeta":
       return wasm.get_avatar_meta();
     case "getAvatarEmotions":

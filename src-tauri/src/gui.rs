@@ -15,6 +15,7 @@ use crate::catalog::{ChildEntry, DataService, NodeDetail, OpenInfo};
 use crate::commodity::CommodityItem;
 use crate::export::{ExportStats, FileExportResult};
 use crate::item_tooltip::ItemTooltip;
+use crate::monster::{MobDetail, MonsterSummary};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -340,6 +341,33 @@ async fn get_avatar_frames(
     .await
 }
 
+/// 怪物圖鑑清單（MonsterBook）：名稱、等級與掉落物 id/名稱由後端聚合，一次拿完。
+#[tauri::command]
+async fn get_monster_book(state: State<'_, AppState>) -> Result<Vec<MonsterSummary>, String> {
+    let state = state.inner().clone();
+    blocking(move || {
+        let (service, _) = state.current_or_open(None)?;
+        service
+            .get_monster_book()
+            .map(|book| (*book).clone())
+            .map_err(|error| error.to_string())
+    })
+    .await
+}
+
+/// 單一怪物明細：能力值、動畫幀、掉落物 icon、出沒地圖與圖鑑文字。
+#[tauri::command]
+async fn get_mob_detail(mob_id: u32, state: State<'_, AppState>) -> Result<MobDetail, String> {
+    let state = state.inner().clone();
+    blocking(move || {
+        let (service, _) = state.current_or_open(None)?;
+        service
+            .get_mob_detail(mob_id)
+            .map_err(|error| error.to_string())
+    })
+    .await
+}
+
 #[tauri::command]
 async fn search_nodes(
     query: String,
@@ -392,6 +420,14 @@ fn initial_path() -> Option<String> {
         .filter(|path| !path.is_empty())
 }
 
+/// 自動化測試用：啟動時直接切到的 view（tree / avatar / monster）。
+#[tauri::command]
+fn initial_view() -> Option<String> {
+    std::env::var("MSCLASSIC_INITIAL_VIEW")
+        .ok()
+        .filter(|view| !view.is_empty())
+}
+
 /// 自動化測試用：啟動時直接開啟的資料目錄（略過資料夾選擇器）。
 #[tauri::command]
 fn initial_data_dir() -> Option<String> {
@@ -439,10 +475,13 @@ pub fn run() {
             get_avatar_emotions,
             get_avatar_equipment,
             get_avatar_frames,
+            get_monster_book,
+            get_mob_detail,
             search_nodes,
             export_subtree,
             export_file,
             initial_path,
+            initial_view,
             initial_data_dir,
             write_binary_file
         ])

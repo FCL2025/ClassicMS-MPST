@@ -11,6 +11,7 @@ import {
   getAudio,
   initialDataDir,
   initialPath,
+  initialView,
   listChildren,
   onProgress,
   openDataDir,
@@ -24,6 +25,7 @@ import {
 import { AvatarPage } from "./components/AvatarPage";
 import { ExportMenu } from "./components/ExportMenu";
 import { ChangelogDialog } from "./components/ChangelogDialog";
+import { MonsterBookPage } from "./components/MonsterBookPage";
 import { NodeDetail } from "./components/NodeDetail";
 import { SearchBar } from "./components/SearchBar";
 import { TreeView } from "./components/TreeView";
@@ -87,10 +89,12 @@ export default function App() {
   const [treeWidth, setTreeWidth] = useState(initialTreeWidth);
   const [resizingTree, setResizingTree] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
-  // 頂部 view 切換：瀏覽（資產樹）/ 紙娃娃（角色試穿）。
-  const [view, setView] = useState<"tree" | "avatar">("tree");
+  // 頂部 view 切換：瀏覽（資產樹）/ 紙娃娃（角色試穿）/ 怪物圖鑑。
+  const [view, setView] = useState<"tree" | "avatar" | "monster">("tree");
   // 紙娃娃第一次切過去才掛載（meta/equipment 此時才載入），之後保持掛載不重置狀態。
   const [avatarActivated, setAvatarActivated] = useState(false);
+  // 怪物圖鑑同樣 lazy-mount（第一次切過去才載入圖鑑清單）。
+  const [monsterActivated, setMonsterActivated] = useState(false);
   // 紙娃娃商店的「點裝」開關：ON 時只列 cash 裝備（App 持有，切 view 不重置）。
   const [cashOnly, setCashOnly] = useState(false);
   // 紙娃娃 BGM：切到紙娃娃 tab 時循環播放 Sound/BgmUI/ShopBgm；false 表示使用者手動暫停。
@@ -99,6 +103,8 @@ export default function App() {
   const bgmUrlRef = useRef<string | null>(null);
   // 紙娃娃最後點選的裝備 img 路徑（footer 麵包屑用）。
   const [avatarPick, setAvatarPick] = useState<string | null>(null);
+  // 怪物圖鑑最後選取的圖鑑路徑（footer 麵包屑用）。
+  const [mobPick, setMobPick] = useState<string | null>(null);
   const treeWidthRef = useRef(treeWidth);
   const childrenMapRef = useRef(childrenMap);
   const childRequestsRef = useRef(new Map<string, Promise<void>>());
@@ -262,6 +268,18 @@ export default function App() {
         if (dir) void loadDataDirectory(dir);
       })
       .catch(() => undefined);
+    // 自動化測試用：MSCLASSIC_INITIAL_VIEW 可指定啟動 view（tree/avatar/monster）。
+    initialView()
+      .then((target) => {
+        if (target === "avatar") {
+          setView("avatar");
+          setAvatarActivated(true);
+        } else if (target === "monster") {
+          setView("monster");
+          setMonsterActivated(true);
+        }
+      })
+      .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -371,6 +389,20 @@ export default function App() {
           >
             紙娃娃
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "monster"}
+            className={view === "monster" ? "is-active" : ""}
+            disabled={!openInfo}
+            title={openInfo ? "怪物圖鑑" : "請先選擇資料夾"}
+            onClick={() => {
+              setView("monster");
+              setMonsterActivated(true);
+            }}
+          >
+            怪物圖鑑
+          </button>
         </div>
         <div className="header-divider" aria-hidden="true" />
         <ExportMenu
@@ -456,7 +488,7 @@ export default function App() {
 
       {openInfo ? (
         <div
-          className={`app-body${view === "avatar" ? " is-avatar" : ""}`}
+          className={`app-body${view === "avatar" ? " is-avatar" : ""}${view === "monster" ? " is-monster" : ""}`}
           style={workspaceStyle}
         >
           {view === "tree" ? (
@@ -510,6 +542,9 @@ export default function App() {
                 onPickItem={setAvatarPick}
               />
             ) : null}
+            {monsterActivated || view === "monster" ? (
+              <MonsterBookPage visible={view === "monster"} onPickMob={setMobPick} />
+            ) : null}
           </main>
         </div>
       ) : (
@@ -550,12 +585,23 @@ export default function App() {
       <ChangelogDialog open={showChangelog} onClose={() => setShowChangelog(false)} />
       <footer
         className="app-footer"
-        title={view === "avatar" ? (avatarPick ?? undefined) : (selected?.path ?? undefined)}
+        title={
+          view === "avatar"
+            ? (avatarPick ?? undefined)
+            : view === "monster"
+              ? (mobPick ?? undefined)
+              : (selected?.path ?? undefined)
+        }
       >
         {view === "avatar" ? (
           <>
             <span className="footer-node-type">{avatarPick ? "類型：img" : ""}</span>
             <span className="footer-node-path">{avatarPick ?? ""}</span>
+          </>
+        ) : view === "monster" ? (
+          <>
+            <span className="footer-node-type">{mobPick ? "類型：img" : ""}</span>
+            <span className="footer-node-path">{mobPick ?? ""}</span>
           </>
         ) : (
           <>
