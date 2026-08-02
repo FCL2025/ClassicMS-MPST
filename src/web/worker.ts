@@ -220,6 +220,8 @@ async function dispatch(method: string, args: unknown[]): Promise<unknown> {
       return wasm.get_audio(args[0] as string);
     case "getItemTooltip":
       return wasm.get_item_tooltip(args[0] as string);
+    case "getItemTooltipById":
+      return wasm.get_item_tooltip_by_id(args[0] as number);
     case "getCommodityItems":
       return wasm.get_commodity_items();
     case "getMonsterBook":

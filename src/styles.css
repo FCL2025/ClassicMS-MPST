@@ -2917,3 +2917,21 @@ textarea:focus-visible,
   line-height: 1.7;
   white-space: pre-line;
 }
+
+/* 戰利品裝備 hover tooltip：fixed 浮動、快速淡入淡出。
+   原點在 tooltip 左下角（translateY(-100%)），顯示於游標右上。 */
+.monster-drop-tooltip {
+  position: fixed;
+  z-index: 110;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(calc(-100% + 4px));
+  transition:
+    opacity 0.14s ease,
+    transform 0.14s ease;
+}
+
+.monster-drop-tooltip.is-visible {
+  opacity: 1;
+  transform: translateY(-100%);
+}

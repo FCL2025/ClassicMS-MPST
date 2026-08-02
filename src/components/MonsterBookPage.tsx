@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
+  getItemTooltipById,
   getMobDetail,
   getMonsterBook,
+  type ItemTooltip as ItemTooltipData,
   type MobDetail,
   type MobFrame,
   type MonsterSummary,
 } from "../api";
+import { ItemTooltip } from "./ItemTooltip";
 
 /** Mob 動畫：逐幀播放，各幀以 origin 對齊（取全幀 bounding box）避免跳動。 */
 function MobSprite({ frames, playing }: { frames: MobFrame[]; playing: boolean }) {
@@ -152,6 +156,53 @@ export function MonsterBookPage({
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const detailGenerationRef = useRef(0);
+
+  // 戰利品裝備 hover tooltip：結果按 itemId 快取，淡入淡出由 is-visible 控制。
+  const tooltipCacheRef = useRef(new Map<number, ItemTooltipData | null>());
+  const [dropTip, setDropTip] = useState<{ tip: ItemTooltipData; x: number; y: number } | null>(
+    null,
+  );
+  const [dropTipVisible, setDropTipVisible] = useState(false);
+  const dropTipGenerationRef = useRef(0);
+  const dropTipHideTimerRef = useRef(0);
+
+  const showDropTip = (itemId: number, event: React.MouseEvent) => {
+    window.clearTimeout(dropTipHideTimerRef.current);
+    const generation = ++dropTipGenerationRef.current;
+    // 預留 tooltip 大概寬度，避免超出視窗右緣；y 為游標位置，
+    // tooltip 以左下角為原點向上長（CSS translateY(-100%)）。
+    const x = Math.min(event.clientX + 16, Math.max(0, window.innerWidth - 360));
+    const y = event.clientY - 8;
+    const present = (tip: ItemTooltipData) => {
+      setDropTip({ tip, x, y });
+      // 掛載後下一幀才加 is-visible，才會有淡入過場。
+      requestAnimationFrame(() => setDropTipVisible(true));
+    };
+    const cached = tooltipCacheRef.current.get(itemId);
+    if (cached !== undefined) {
+      if (cached) present(cached);
+      return;
+    }
+    getItemTooltipById(itemId)
+      .then((tip) => {
+        tooltipCacheRef.current.set(itemId, tip);
+        if (dropTipGenerationRef.current === generation && tip) present(tip);
+      })
+      .catch(() => {
+        tooltipCacheRef.current.set(itemId, null);
+      });
+  };
+
+  const hideDropTip = () => {
+    dropTipGenerationRef.current += 1;
+    setDropTipVisible(false);
+    window.clearTimeout(dropTipHideTimerRef.current);
+    // 等淡出動畫播完再卸載。
+    dropTipHideTimerRef.current = window.setTimeout(() => setDropTip(null), 160);
+  };
+
+  // 卸載時清掉淡出計時器。
+  useEffect(() => () => window.clearTimeout(dropTipHideTimerRef.current), []);
 
   // 清單只載入一次（此元件掛載後保持不卸載）。
   useEffect(() => {
@@ -313,7 +364,13 @@ export function MonsterBookPage({
                             <div
                               key={drop.itemId}
                               className="monster-drop"
-                              title={drop.name ?? String(drop.itemId)}
+                              title={group === "裝備" ? undefined : (drop.name ?? String(drop.itemId))}
+                              onMouseEnter={
+                                group === "裝備"
+                                  ? (event) => showDropTip(drop.itemId, event)
+                                  : undefined
+                              }
+                              onMouseLeave={group === "裝備" ? hideDropTip : undefined}
                             >
                               <div className="monster-drop-icon">
                                 {drop.iconBase64 ? (
@@ -360,6 +417,17 @@ export function MonsterBookPage({
   return (
     <div className="monster-page" hidden={!visible}>
       {content}
+      {dropTip
+        ? createPortal(
+            <div
+              className={`monster-drop-tooltip${dropTipVisible ? " is-visible" : ""}`}
+              style={{ left: dropTip.x, top: dropTip.y }}
+            >
+              <ItemTooltip details={dropTip.tip} />
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

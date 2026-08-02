@@ -291,6 +291,9 @@ export const searchNodes = (query: string, scope?: string | null, limit = 200) =
 export const getItemTooltip = (path: string) =>
   rpc<ItemTooltip | null>("getItemTooltip", path);
 
+export const getItemTooltipById = (itemId: number) =>
+  rpc<ItemTooltip | null>("getItemTooltipById", itemId);
+
 export const getCommodityItems = () => rpc<CommodityItem[]>("getCommodityItems");
 
 export const getMonsterBook = () => rpc<MonsterSummary[]>("getMonsterBook");

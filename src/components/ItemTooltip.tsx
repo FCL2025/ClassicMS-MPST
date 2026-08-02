@@ -6,6 +6,14 @@ import { exportTooltipPng } from "./tooltipExport";
 /** 呈現方式對齊 Harepacker-MPST 的 ItemTooltipCard（gear 版本）。 */
 
 export const ALL_JOB_LABELS = ["初心者", "劍士", "法師", "弓箭手", "盜賊", "海盜"];
+/** 需求屬性標籤（畫面與 PNG 匯出共用）。 */
+export const REQ_LABELS = {
+  level: "等級限制",
+  str: "力量限制",
+  dex: "敏捷限制",
+  int: "智力限制",
+  luk: "幸運限制",
+} as const;
 const ICON_SCALE = 2;
 const ICON_MIN_SIZE = 34;
 const ICON_MAX_SIZE = 68;
@@ -118,27 +126,27 @@ export function ItemTooltip({ details }: { details: ItemTooltipData }) {
         <dl className="item-tooltip-reqs">
           <div className="item-tooltip-req-row">
             <div className={`item-tooltip-req is-wide ${reqTone(details.requiredLevel, true)}`}>
-              <dt>REQ LEV</dt>
+              <dt>{REQ_LABELS.level}</dt>
               <dd>{formatReq(details.requiredLevel)}</dd>
             </div>
           </div>
           <div className="item-tooltip-req-row">
             <div className={`item-tooltip-req ${reqTone(details.requiredStr)}`}>
-              <dt>REQ STR</dt>
+              <dt>{REQ_LABELS.str}</dt>
               <dd>{formatReq(details.requiredStr)}</dd>
             </div>
             <div className={`item-tooltip-req ${reqTone(details.requiredLuk)}`}>
-              <dt>REQ LUK</dt>
+              <dt>{REQ_LABELS.luk}</dt>
               <dd>{formatReq(details.requiredLuk)}</dd>
             </div>
           </div>
           <div className="item-tooltip-req-row">
             <div className={`item-tooltip-req ${reqTone(details.requiredDex)}`}>
-              <dt>REQ DEX</dt>
+              <dt>{REQ_LABELS.dex}</dt>
               <dd>{formatReq(details.requiredDex)}</dd>
             </div>
             <div className={`item-tooltip-req ${reqTone(details.requiredInt)}`}>
-              <dt>REQ INT</dt>
+              <dt>{REQ_LABELS.int}</dt>
               <dd>{formatReq(details.requiredInt)}</dd>
             </div>
           </div>

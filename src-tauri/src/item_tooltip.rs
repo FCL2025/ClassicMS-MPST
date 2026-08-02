@@ -84,6 +84,46 @@ impl DataService {
         let Some((img_path, category_hint)) = self.gear_img_path(path) else {
             return Ok(None);
         };
+        self.build_tooltip(img_path, category_hint)
+    }
+
+    /// 以道具 id 取裝備 tooltip（怪物圖鑑戰利品 hover 用）；
+    /// id 不是裝備或資料集缺此 img 時回 Ok(None)。
+    pub fn get_item_tooltip_by_id(&self, item_id: u32) -> Result<Option<ItemTooltip>> {
+        let id = format!("{item_id:08}");
+        // Character 直屬 img（0002xxxx 臉型、0003~0005 髮型等）。
+        let direct = format!("Character/{id}");
+        if self.catalog.entries.contains_key(&direct) {
+            return self.build_tooltip(direct, String::new());
+        }
+        // Character/<分類目錄>/<id>：只掃 Character 前綴區間。
+        let prefix = "Character/";
+        let found = self
+            .catalog
+            .entries
+            .range(prefix.to_string()..)
+            .take_while(|(key, _)| key.starts_with(prefix))
+            .find_map(|(key, _)| {
+                let rest = key.strip_prefix(prefix)?;
+                let (category, last) = rest.split_once('/')?;
+                if last == id && !last.contains('/') {
+                    Some((key.clone(), category.to_string()))
+                } else {
+                    None
+                }
+            });
+        let Some((img_path, category_hint)) = found else {
+            return Ok(None);
+        };
+        self.build_tooltip(img_path, category_hint)
+    }
+
+    /// 由裝備 img 根路徑聚合 tooltip 內容。
+    fn build_tooltip(
+        &self,
+        img_path: String,
+        category_hint: String,
+    ) -> Result<Option<ItemTooltip>> {
         let tree = self.tree_for(&img_path)?;
         let Some(info) = tree.find("info") else {
             return Ok(None);

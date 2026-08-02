@@ -273,6 +273,22 @@ async fn get_item_tooltip(
     .await
 }
 
+/// 以道具 id 取裝備 tooltip：怪物圖鑑戰利品 hover 用，資料集缺此裝備時回 None。
+#[tauri::command]
+async fn get_item_tooltip_by_id(
+    item_id: u32,
+    state: State<'_, AppState>,
+) -> Result<Option<ItemTooltip>, String> {
+    let state = state.inner().clone();
+    blocking(move || {
+        let (service, _) = state.current_or_open(None)?;
+        service
+            .get_item_tooltip_by_id(item_id)
+            .map_err(|error| error.to_string())
+    })
+    .await
+}
+
 /// 商城商品清單（Etc/TW/Commodity）：名稱與 icon 由後端聚合，一次拿完。
 #[tauri::command]
 async fn get_commodity_items(state: State<'_, AppState>) -> Result<Vec<CommodityItem>, String> {
@@ -470,6 +486,7 @@ pub fn run() {
             get_image,
             get_audio,
             get_item_tooltip,
+            get_item_tooltip_by_id,
             get_commodity_items,
             get_avatar_meta,
             get_avatar_emotions,

@@ -225,6 +225,8 @@ export const getImage = (path: string) => invoke<ImagePreviewResult | null>("get
 export const getAudio = (path: string) => invoke<AudioResult>("get_audio", { path });
 export const getItemTooltip = (path: string) =>
   invoke<ItemTooltip | null>("get_item_tooltip", { path });
+export const getItemTooltipById = (itemId: number) =>
+  invoke<ItemTooltip | null>("get_item_tooltip_by_id", { itemId });
 export const getCommodityItems = () => invoke<CommodityItem[]>("get_commodity_items");
 export const getMonsterBook = () => invoke<MonsterSummary[]>("get_monster_book");
 export const getMobDetail = (mobId: number) =>

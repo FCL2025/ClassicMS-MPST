@@ -3,7 +3,7 @@
 // 顏色取自目前主題的 design token（經 1×1 canvas 正規化成 rgb，回避 oklch 解析差異）。
 import type { ItemTooltip } from "../api";
 import { saveBinaryFile } from "../api";
-import { ALL_JOB_LABELS } from "./ItemTooltip";
+import { ALL_JOB_LABELS, REQ_LABELS } from "./ItemTooltip";
 
 const SCALE = 2;
 const REM = 16;
@@ -134,15 +134,15 @@ function computeWidth(ctx: CanvasRenderingContext2D, details: ItemTooltip): numb
     ctx.font = fontOf(700, 0.78, true);
     return lw + 6 + ctx.measureText(value).width;
   };
-  const lev = pairWidth("REQ LEV", formatReq(details.requiredLevel));
+  const lev = pairWidth(REQ_LABELS.level, formatReq(details.requiredLevel));
   const row2 =
-    pairWidth("REQ STR", formatReq(details.requiredStr)) +
+    pairWidth(REQ_LABELS.str, formatReq(details.requiredStr)) +
     6 +
-    pairWidth("REQ LUK", formatReq(details.requiredLuk));
+    pairWidth(REQ_LABELS.luk, formatReq(details.requiredLuk));
   const row3 =
-    pairWidth("REQ DEX", formatReq(details.requiredDex)) +
+    pairWidth(REQ_LABELS.dex, formatReq(details.requiredDex)) +
     6 +
-    pairWidth("REQ INT", formatReq(details.requiredInt));
+    pairWidth(REQ_LABELS.int, formatReq(details.requiredInt));
   consider(PAD_X + ICON_FRAME + 12 + Math.max(lev, row2, row3) + PAD_X);
 
   const jobWidths = ALL_JOB_LABELS.map((job) => {
@@ -237,14 +237,14 @@ function layout(
   });
 
   const reqRows: Array<Array<[string, string, ReqTone]>> = [
-    [["REQ LEV", formatReq(details.requiredLevel), reqTone(details.requiredLevel, true)]],
+    [[REQ_LABELS.level, formatReq(details.requiredLevel), reqTone(details.requiredLevel, true)]],
     [
-      ["REQ STR", formatReq(details.requiredStr), reqTone(details.requiredStr)],
-      ["REQ LUK", formatReq(details.requiredLuk), reqTone(details.requiredLuk)],
+      [REQ_LABELS.str, formatReq(details.requiredStr), reqTone(details.requiredStr)],
+      [REQ_LABELS.luk, formatReq(details.requiredLuk), reqTone(details.requiredLuk)],
     ],
     [
-      ["REQ DEX", formatReq(details.requiredDex), reqTone(details.requiredDex)],
-      ["REQ INT", formatReq(details.requiredInt), reqTone(details.requiredInt)],
+      [REQ_LABELS.dex, formatReq(details.requiredDex), reqTone(details.requiredDex)],
+      [REQ_LABELS.int, formatReq(details.requiredInt), reqTone(details.requiredInt)],
     ],
   ];
   ctx.textBaseline = "alphabetic";

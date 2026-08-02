@@ -148,6 +148,13 @@ pub fn get_item_tooltip(path: &str) -> Result<JsValue, JsValue> {
     with_service(|s| s.get_item_tooltip(path).map_err(|e| e.to_string())).and_then(|v| to_js(&v))
 }
 
+/// 以道具 id 取裝備 tooltip：回 `ItemTooltip`（camelCase）或 `null`（非裝備 / 缺 img）。
+#[wasm_bindgen]
+pub fn get_item_tooltip_by_id(item_id: u32) -> Result<JsValue, JsValue> {
+    with_service(|s| s.get_item_tooltip_by_id(item_id).map_err(|e| e.to_string()))
+        .and_then(|v| to_js(&v))
+}
+
 /// 商城商品清單：回 `CommodityItem[]`（camelCase），語意對齊 gui.rs 的 get_commodity_items。
 #[wasm_bindgen]
 pub fn get_commodity_items() -> Result<JsValue, JsValue> {
