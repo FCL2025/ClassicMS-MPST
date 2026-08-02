@@ -223,6 +223,10 @@ impl DataService {
                     .into_iter()
                     .find_map(|path| self.get_image(&path).ok().flatten().map(&encode)),
             })
+            // 幽靈道具過濾：名稱與 icon 都查不到 = 客戶端對此 id 完全無資料
+            // （圖鑑 reward 清單來自伺服器端完整資料庫，會殘留未實裝道具），
+            // 直接隱藏；只缺其中一項的視為資料小缺，保留顯示。
+            .filter(|drop| drop.name.is_some() || drop.icon_base64.is_some())
             .collect();
         let maps = map_ids
             .into_iter()
