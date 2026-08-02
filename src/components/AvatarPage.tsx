@@ -13,7 +13,7 @@ import {
 import { AvatarEquipPanel } from "./AvatarEquipPanel";
 import { AvatarPreview } from "./AvatarPreview";
 import { AvatarShop } from "./AvatarShop";
-import { resolveColorVariant } from "./avatarColor";
+import { joinColorId, resolveColorVariant, splitColorId } from "./avatarColor";
 
 // 可穿的裝備部位（body/head 是膚色，不在此列）。
 export type EquipSlot =
@@ -83,6 +83,16 @@ export function AvatarPage({
 
   // 沒穿臉型時用預設臉，但跟著臉色選擇換色（該色不存在時退回顏色 0）。
   const faceId = parts.face?.id ?? resolveColorVariant("face", DEFAULT_FACE_ID, faceColor, idExists);
+
+  // 目前臉型（穿著的或預設臉）實際可選的顏色：0–7 恆列出，
+  // 8（白色）只有該造型真的有這個 id 才列出。
+  const faceColorOptions = useMemo(() => {
+    const split = splitColorId("face", faceId);
+    if (!split) return [0, 1, 2, 3, 4, 5, 6, 7];
+    const options = [0, 1, 2, 3, 4, 5, 6, 7];
+    if (idExists(joinColorId("face", split.base, 8))) options.push(8);
+    return options;
+  }, [faceId, idExists]);
 
   // meta + equipment：第一次切到紙娃娃（此元件掛載）才載入，之後保持。
   useEffect(() => {
@@ -237,6 +247,7 @@ export function AvatarPage({
               onEmotionChange={setEmotion}
               hairColor={hairColor}
               faceColor={faceColor}
+              faceColors={faceColorOptions}
               onColorChange={changeColor}
               hairCover={hairCover}
               onHairCoverChange={setHairCover}

@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { EquipItem, SkinInfo } from "../api";
 import type { EquipSlot, PartsState } from "./AvatarPage";
 import { loadAvatarIcon, SLOT_TABS } from "./AvatarShop";
-import { COLOR_LABELS } from "./avatarColor";
+import { COLOR_LABELS, FACE_COLOR_LABELS } from "./avatarColor";
 
 function AvatarEquipRow({
   slot,
@@ -66,6 +66,62 @@ function AvatarEquipRow({
   );
 }
 
+// 顏色下拉：支援滑鼠滾輪直接換色（不用先點開）。
+// React 的 onWheel 是 passive listener，無法 preventDefault，所以改綁原生 wheel 事件。
+function ColorSelect({
+  id,
+  label,
+  value,
+  options,
+  labels,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: number;
+  /** 實際可選的顏色碼（依序顯示）。 */
+  options: number[];
+  labels: readonly string[];
+  onChange: (color: number) => void;
+}) {
+  const selectRef = useRef<HTMLSelectElement>(null);
+
+  useEffect(() => {
+    const select = selectRef.current;
+    if (!select) return;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const index = options.indexOf(value);
+      const step = event.deltaY > 0 ? 1 : -1;
+      const next = options[Math.min(options.length - 1, Math.max(0, index + step))];
+      if (next !== undefined && next !== value) onChange(next);
+    };
+    select.addEventListener("wheel", onWheel, { passive: false });
+    return () => select.removeEventListener("wheel", onWheel);
+  }, [options, value, onChange]);
+
+  // 選取的顏色不在可選清單時（例如換了沒有白色的臉型），顯示退回第一個選項。
+  const displayValue = options.includes(value) ? value : options[0];
+
+  return (
+    <div className="avatar-color-field">
+      <label htmlFor={id}>{label}</label>
+      <select
+        ref={selectRef}
+        id={id}
+        value={displayValue}
+        onChange={(event) => onChange(Number(event.target.value))}
+      >
+        {options.map((color) => (
+          <option key={color} value={color}>
+            {labels[color] ?? color}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 interface AvatarEquipPanelProps {
   skins: SkinInfo[];
   skin: SkinInfo;
@@ -78,6 +134,8 @@ interface AvatarEquipPanelProps {
   onEmotionChange: (emotion: string) => void;
   hairColor: number;
   faceColor: number;
+  /** 目前臉型實際可選的顏色碼（白色 8 只有該造型有才會出現）。 */
+  faceColors: number[];
   onColorChange: (slot: "hair" | "face", color: number) => void;
   hairCover: boolean;
   onHairCoverChange: (hairCover: boolean) => void;
@@ -102,6 +160,7 @@ export function AvatarEquipPanel({
   onEmotionChange,
   hairColor,
   faceColor,
+  faceColors,
   onColorChange,
   hairCover,
   onHairCoverChange,
@@ -178,37 +237,25 @@ export function AvatarEquipPanel({
         </div>
       </div>
 
-      {/* 臉型顏色 / 髮型顏色：左右並排。 */}
+      {/* 臉型顏色 / 髮型顏色：左右並排；臉色用專用名稱表（0–8），白色有資料才列出。 */}
       <div className="avatar-control-row">
         <div className="avatar-color-row">
-          <div className="avatar-color-field">
-            <label htmlFor="avatar-face-color-select">臉型顏色</label>
-            <select
-              id="avatar-face-color-select"
-              value={faceColor}
-              onChange={(event) => onColorChange("face", Number(event.target.value))}
-            >
-              {COLOR_LABELS.map((label, index) => (
-                <option key={label} value={index}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="avatar-color-field">
-            <label htmlFor="avatar-hair-color-select">髮型顏色</label>
-            <select
-              id="avatar-hair-color-select"
-              value={hairColor}
-              onChange={(event) => onColorChange("hair", Number(event.target.value))}
-            >
-              {COLOR_LABELS.map((label, index) => (
-                <option key={label} value={index}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
+          <ColorSelect
+            id="avatar-face-color-select"
+            label="臉型顏色"
+            value={faceColor}
+            options={faceColors}
+            labels={FACE_COLOR_LABELS}
+            onChange={(color) => onColorChange("face", color)}
+          />
+          <ColorSelect
+            id="avatar-hair-color-select"
+            label="髮型顏色"
+            value={hairColor}
+            options={[0, 1, 2, 3, 4, 5, 6, 7]}
+            labels={COLOR_LABELS}
+            onChange={(color) => onColorChange("hair", color)}
+          />
         </div>
       </div>
 

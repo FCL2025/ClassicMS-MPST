@@ -2,10 +2,23 @@ import type { EquipItem } from "../api";
 import type { EquipSlot } from "./AvatarPage";
 
 // 髮型/臉型的顏色編碼（對遊戲資料驗證過）：
-// - 髮型：末碼是顏色（0003XXX0–7），其餘位是造型。
-// - 臉型：百位數是顏色（0002CXXSS，C = 顏色），其餘位是造型。
-// 顏色皆 0–7，名稱表前綴依序為：黑/紅/橙/黃/綠/藍/紫/褐。
+// - 髮型：末碼是顏色（0003XXX0–7），其餘位是造型。名稱依序：黑/紅/橙/黃/綠/藍/紫/褐。
+// - 臉型：百位數是顏色（0002CXXSS，C = 顏色，即倒數第三碼），其餘位是造型。
+//   顏色 0–8，名稱依序：黑/青/紅/綠/黃/藍/紫/粉/白（8 白色非每個造型都有）。
 export const COLOR_LABELS = ["黑色", "紅色", "橙色", "黃色", "綠色", "藍色", "紫色", "褐色"] as const;
+
+/** 臉型專用顏色名稱（index = 百位數顏色碼 0–8）。 */
+export const FACE_COLOR_LABELS = [
+  "黑色",
+  "青色",
+  "紅色",
+  "綠色",
+  "黃色",
+  "藍色",
+  "紫色",
+  "粉色",
+  "白色",
+] as const;
 
 /** 該 slot 的顏色位階（hair = 個位、face = 百位）；無顏色概念回 null。 */
 function colorUnitOf(slot: EquipSlot): 1 | 100 | null {
@@ -71,8 +84,8 @@ export function resolveColorVariant(
   return id;
 }
 
-// 髮型名稱開頭的顏色詞（列表只留一色後，卡片顯示造型名即可）。
-const COLOR_NAME_PREFIX = /^(?:黑色|紅色|橙色|黃色|綠色|藍色|紫色|褐色)/;
+// 髮型/臉型名稱開頭的顏色詞（列表只留一色後，卡片顯示造型名即可）。
+const COLOR_NAME_PREFIX = /^(?:黑色|青色|紅色|橙色|黃色|綠色|藍色|紫色|粉色|白色|褐色)/;
 
 /** 去掉名稱開頭的顏色詞；去完會變空字串時回原名。 */
 export function stripColorPrefix(name: string): string {
