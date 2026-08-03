@@ -16,6 +16,7 @@ use crate::commodity::CommodityItem;
 use crate::export::{ExportStats, FileExportResult};
 use crate::item_tooltip::ItemTooltip;
 use crate::monster::{MobDetail, MonsterSummary};
+use crate::skill::{SkillDetail, SkillJobGroup};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -386,6 +387,37 @@ async fn get_mob_detail(mob_id: u32, state: State<'_, AppState>) -> Result<MobDe
     .await
 }
 
+/// 技能瀏覽器清單（Skill/*）：各職業的技能 id/名稱/最高等級由後端聚合，一次拿完。
+#[tauri::command]
+async fn get_skill_book(state: State<'_, AppState>) -> Result<Vec<SkillJobGroup>, String> {
+    let state = state.inner().clone();
+    blocking(move || {
+        let (service, _) = state.current_or_open(None)?;
+        service
+            .get_skill_book()
+            .map(|book| (*book).clone())
+            .map_err(|error| error.to_string())
+    })
+    .await
+}
+
+/// 單一技能明細：名稱/說明、動作與延遲、每級數值 props。
+#[tauri::command]
+async fn get_skill_detail(
+    job: String,
+    skill_id: String,
+    state: State<'_, AppState>,
+) -> Result<SkillDetail, String> {
+    let state = state.inner().clone();
+    blocking(move || {
+        let (service, _) = state.current_or_open(None)?;
+        service
+            .get_skill_detail(&job, &skill_id)
+            .map_err(|error| error.to_string())
+    })
+    .await
+}
+
 #[tauri::command]
 async fn search_nodes(
     query: String,
@@ -496,6 +528,8 @@ pub fn run() {
             get_avatar_frames,
             get_monster_book,
             get_mob_detail,
+            get_skill_book,
+            get_skill_detail,
             search_nodes,
             export_subtree,
             export_file,

@@ -14,6 +14,7 @@ pub mod image;
 pub mod item_tooltip;
 pub mod monster;
 pub mod search;
+pub mod skill;
 pub mod unity;
 #[cfg(target_arch = "wasm32")]
 pub mod wasm_shims;

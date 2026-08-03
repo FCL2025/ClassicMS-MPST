@@ -141,6 +141,40 @@ export interface MobDetail {
   frames: MobFrame[];
 }
 
+/** 技能分類（對齊 skill.rs 的 SkillCategory serde 輸出）。 */
+export type SkillCategory = "passive" | "support" | "active";
+
+/** 技能清單項目（對齊 skill.rs 的 serde 輸出）。 */
+export interface SkillSummary {
+  id: string;
+  job: string;
+  name: string | null;
+  maxLevel: number;
+  skillType: number | null;
+  category: SkillCategory;
+}
+
+/** 單一職業的技能群組。 */
+export interface SkillJobGroup {
+  job: string;
+  skills: SkillSummary[];
+}
+
+/** 單一技能完整明細。levels 的葉值可能是數字、字串或 [x,y] 向量。 */
+export interface SkillDetail {
+  id: string;
+  job: string;
+  name: string | null;
+  desc: string | null;
+  h: string | null;
+  levelDesc: Record<string, string>;
+  maxLevel: number;
+  skillType: number | null;
+  actions: string[];
+  actionDelays: Record<string, number>;
+  levels: Record<string, Record<string, number | string | [number, number]>>;
+}
+
 export interface ExportStats {
   out_dir: string;
   json_files: number;
@@ -231,6 +265,9 @@ export const getCommodityItems = () => invoke<CommodityItem[]>("get_commodity_it
 export const getMonsterBook = () => invoke<MonsterSummary[]>("get_monster_book");
 export const getMobDetail = (mobId: number) =>
   invoke<MobDetail>("get_mob_detail", { mobId });
+export const getSkillBook = () => invoke<SkillJobGroup[]>("get_skill_book");
+export const getSkillDetail = (job: string, skillId: string) =>
+  invoke<SkillDetail>("get_skill_detail", { job, skillId });
 export const getAvatarMeta = () => invoke<AvatarMeta>("get_avatar_meta");
 export const getAvatarEmotions = (faceId: string) =>
   invoke<string[]>("get_avatar_emotions", { faceId });

@@ -181,6 +181,40 @@ export interface MobDetail {
   frames: MobFrame[];
 }
 
+/** 技能分類（對齊 skill.rs 的 SkillCategory serde 輸出）。 */
+export type SkillCategory = "passive" | "support" | "active";
+
+/** 技能清單項目（對齊 skill.rs 的 serde 輸出）。 */
+export interface SkillSummary {
+  id: string;
+  job: string;
+  name: string | null;
+  maxLevel: number;
+  skillType: number | null;
+  category: SkillCategory;
+}
+
+/** 單一職業的技能群組。 */
+export interface SkillJobGroup {
+  job: string;
+  skills: SkillSummary[];
+}
+
+/** 單一技能完整明細。levels 的葉值可能是數字、字串或 [x,y] 向量。 */
+export interface SkillDetail {
+  id: string;
+  job: string;
+  name: string | null;
+  desc: string | null;
+  h: string | null;
+  levelDesc: Record<string, string>;
+  maxLevel: number;
+  skillType: number | null;
+  actions: string[];
+  actionDelays: Record<string, number>;
+  levels: Record<string, Record<string, number | string | [number, number]>>;
+}
+
 /** 紙娃娃膚色（對齊 avatar.rs 的 serde 輸出）。 */
 export interface SkinInfo {
   bodyId: string;
@@ -299,6 +333,11 @@ export const getCommodityItems = () => rpc<CommodityItem[]>("getCommodityItems")
 export const getMonsterBook = () => rpc<MonsterSummary[]>("getMonsterBook");
 
 export const getMobDetail = (mobId: number) => rpc<MobDetail>("getMobDetail", mobId);
+
+export const getSkillBook = () => rpc<SkillJobGroup[]>("getSkillBook");
+
+export const getSkillDetail = (job: string, skillId: string) =>
+  rpc<SkillDetail>("getSkillDetail", job, skillId);
 
 export const getAvatarMeta = () => rpc<AvatarMeta>("getAvatarMeta");
 

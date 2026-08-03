@@ -236,6 +236,10 @@ async function dispatch(method: string, args: unknown[]): Promise<unknown> {
       return wasm.get_monster_book();
     case "getMobDetail":
       return wasm.get_mob_detail(args[0] as number);
+    case "getSkillBook":
+      return wasm.get_skill_book();
+    case "getSkillDetail":
+      return wasm.get_skill_detail(args[0] as string, args[1] as string);
     case "getAvatarMeta":
       return wasm.get_avatar_meta();
     case "getAvatarEmotions":

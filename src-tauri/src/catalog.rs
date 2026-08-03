@@ -486,6 +486,8 @@ pub struct DataService {
     pub(crate) search_index_cache: crate::search::SearchIndexCache,
     pub(crate) monster_book_cache: crate::monster::MonsterBookCache,
     pub(crate) monster_name_cache: crate::monster::MonsterNameCache,
+    pub(crate) skill_book_cache: crate::skill::SkillBookCache,
+    pub(crate) skill_string_cache: crate::skill::SkillStringCache,
 }
 
 #[derive(Default)]
@@ -582,6 +584,8 @@ impl DataService {
             search_index_cache: Default::default(),
             monster_book_cache: Default::default(),
             monster_name_cache: Default::default(),
+            skill_book_cache: Default::default(),
+            skill_string_cache: Default::default(),
         };
         service.validate_locations()?;
         Ok((service, info))
@@ -622,6 +626,8 @@ impl DataService {
             search_index_cache: Default::default(),
             monster_book_cache: Default::default(),
             monster_name_cache: Default::default(),
+            skill_book_cache: Default::default(),
+            skill_string_cache: Default::default(),
         };
         service.validate_locations()?;
         Ok((service, info))
