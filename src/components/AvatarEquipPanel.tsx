@@ -139,6 +139,8 @@ interface AvatarEquipPanelProps {
   onColorChange: (slot: "hair" | "face", color: number) => void;
   hairCover: boolean;
   onHairCoverChange: (hairCover: boolean) => void;
+  hairShade: boolean;
+  onHairShadeChange: (hairShade: boolean) => void;
   playing: boolean;
   onTogglePlaying: () => void;
   parts: PartsState;
@@ -164,6 +166,8 @@ export function AvatarEquipPanel({
   onColorChange,
   hairCover,
   onHairCoverChange,
+  hairShade,
+  onHairShadeChange,
   playing,
   onTogglePlaying,
   parts,
@@ -259,19 +263,33 @@ export function AvatarEquipPanel({
         </div>
       </div>
 
-      {/* 帽子遮髮（hairCover）：勾選時帽子蓋住髮型；不勾時髮型超出帽子。 */}
+      {/* 帽子遮髮（hairCover）：勾選時帽子蓋住髮型；不勾時髮型超出帽子。
+          髮型陰影（hairShade）：不勾時藏掉髮型的 hairShade 陰影層。 */}
       <div className="avatar-control-row">
-        <label
-          className="avatar-hair-cover"
-          title="勾選時帽子蓋住髮型；不勾時髮型超出帽子（有戴帽子才生效）"
-        >
-          <input
-            type="checkbox"
-            checked={hairCover}
-            onChange={(event) => onHairCoverChange(event.target.checked)}
-          />
-          帽子遮髮
-        </label>
+        <div className="avatar-checkbox-row">
+          <label
+            className="avatar-hair-cover"
+            title="勾選時帽子蓋住髮型；不勾時髮型超出帽子（有戴帽子才生效）"
+          >
+            <input
+              type="checkbox"
+              checked={hairCover}
+              onChange={(event) => onHairCoverChange(event.target.checked)}
+            />
+            帽子遮髮
+          </label>
+          <label
+            className="avatar-hair-cover"
+            title="勾選時顯示髮型的 hairShade 陰影層；有些髮型這層是很重的整片陰影，可取消勾選"
+          >
+            <input
+              type="checkbox"
+              checked={hairShade}
+              onChange={(event) => onHairShadeChange(event.target.checked)}
+            />
+            髮型陰影
+          </label>
+        </div>
       </div>
 
       <hr className="avatar-divider" />

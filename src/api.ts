@@ -240,7 +240,8 @@ export const getAvatarFrames = (
   action: string,
   emotion: string,
   hairCover: boolean,
-) => invoke<AvatarFrames>("get_avatar_frames", { parts, action, emotion, hairCover });
+  hairShade: boolean,
+) => invoke<AvatarFrames>("get_avatar_frames", { parts, action, emotion, hairCover, hairShade });
 export interface SearchHit {
   path: string;
   name: string | null;

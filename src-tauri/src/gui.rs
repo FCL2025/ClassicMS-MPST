@@ -340,18 +340,20 @@ async fn get_avatar_equipment(state: State<'_, AppState>) -> Result<Vec<EquipIte
 
 /// 合成紙娃娃一個動作的幀圖層（身體幀 + 表情幀）。
 /// `hair_cover` = 「帽子遮髮」核取方塊（有戴帽才生效）。
+/// `hair_shade` = 「髮型陰影」核取方塊（不勾 → 藏 hairShade 層）。
 #[tauri::command]
 async fn get_avatar_frames(
     parts: Vec<avatar::PartInput>,
     action: String,
     emotion: String,
     hair_cover: bool,
+    hair_shade: bool,
     state: State<'_, AppState>,
 ) -> Result<AvatarFrames, String> {
     let state = state.inner().clone();
     blocking(move || {
         let (service, _) = state.current_or_open(None)?;
-        avatar::avatar_frames(&service, parts, &action, &emotion, hair_cover)
+        avatar::avatar_frames(&service, parts, &action, &emotion, hair_cover, hair_shade)
             .map_err(|error| error.to_string())
     })
     .await

@@ -312,7 +312,8 @@ export const getAvatarFrames = (
   action: string,
   emotion: string,
   hairCover: boolean,
-) => rpc<AvatarFrames>("getAvatarFrames", parts, action, emotion, hairCover);
+  hairShade: boolean,
+) => rpc<AvatarFrames>("getAvatarFrames", parts, action, emotion, hairCover, hairShade);
 
 interface WasmFileExport {
   filename: string;

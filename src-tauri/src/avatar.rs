@@ -380,12 +380,16 @@ pub fn avatar_equipment(svc: &DataService) -> Result<Vec<EquipItem>> {
 /// `hair_cover` = UI 的「帽子遮髮」核取方塊（對齊 WzComparerR2 的 HairCover）：
 /// 勾選且有戴帽 → 藏 hairOverHead 等蓋頭髮層；不勾 → 髮型超出帽子
 /// （藏 hair/backHairBelowCap 等帽下髮層）。沒戴帽時此旗標無效果。
+///
+/// `hair_shade` = UI 的「髮型陰影」核取方塊：不勾 → 藏 z="hairShade" 的
+/// 髮型陰影層（有些髮型這層是很重的整片陰影）。
 pub fn avatar_frames(
     svc: &DataService,
     parts: Vec<PartInput>,
     action: &str,
     emotion: &str,
     hair_cover: bool,
+    hair_shade: bool,
 ) -> Result<AvatarFrames> {
     const REST_ORDER: &[&str] = &[
         "coat", "longcoat", "pants", "shoes", "glove", "cape", "shield", "weapon", "earrings",
@@ -501,6 +505,10 @@ pub fn avatar_frames(
             let keep_all = !hair_cover && !hidden.is_empty() && hidden.iter().all(|&hide| hide);
             for ((node, crel), hide) in canvases.into_iter().zip(hidden) {
                 if hide && !keep_all {
+                    continue;
+                }
+                // 「髮型陰影」開關：不勾時藏 hairShade 層（z 標記在內層 canvas 上）。
+                if !hair_shade && z_str(node) == Some("hairShade") {
                     continue;
                 }
                 let root_pos =

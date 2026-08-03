@@ -248,6 +248,7 @@ async function dispatch(method: string, args: unknown[]): Promise<unknown> {
         args[1] as string,
         args[2] as string,
         args[3] as boolean,
+        args[4] as boolean,
       );
     case "searchNodes":
       return wasm.search_nodes(

@@ -69,6 +69,8 @@ export function AvatarPage({
   // 帽子遮髮（對齊 WzComparerR2 的 HairCover）：勾選且有戴帽 → 帽子蓋住髮型；
   // 不勾 → 髮型超出帽子。沒戴帽時無效果。
   const [hairCover, setHairCover] = useState(true);
+  // 髮型陰影（hairShade 層）：預設關閉——有些髮型這層是很重的整片陰影，想看再勾選。
+  const [hairShade, setHairShade] = useState(false);
   const [frames, setFrames] = useState<AvatarFrames | null>(null);
   const [framesLoading, setFramesLoading] = useState(false);
   const [framesError, setFramesError] = useState<string | null>(null);
@@ -135,7 +137,7 @@ export function AvatarPage({
     };
   }, [faceId]);
 
-  // 任何 parts/skin/action/emotion/hairCover 變更 → 重取合成幀（generation guard 防舊回應覆蓋）。
+  // 任何 parts/skin/action/emotion/hairCover/hairShade 變更 → 重取合成幀（generation guard 防舊回應覆蓋）。
   // 只送 visible 的部位 + body/head：隱藏的部位（例如帽子）不能觸發後端遮髮，所以不送。
   useEffect(() => {
     if (!skin) return;
@@ -149,7 +151,7 @@ export function AvatarPage({
     }
     setFramesLoading(true);
     setFramesError(null);
-    getAvatarFrames(partInputs, action, emotion, hairCover)
+    getAvatarFrames(partInputs, action, emotion, hairCover, hairShade)
       .then((result) => {
         if (generation === framesGenerationRef.current) setFrames(result);
       })
@@ -159,7 +161,7 @@ export function AvatarPage({
       .finally(() => {
         if (generation === framesGenerationRef.current) setFramesLoading(false);
       });
-  }, [skin, action, emotion, parts, hairCover]);
+  }, [skin, action, emotion, parts, hairCover, hairShade]);
 
   // 穿上（同 slot 取代），含 longcoat 互斥（移植自參考專案 WzComparerR2.Avatar）。
   const equip = useCallback((slot: EquipSlot, id: string) => {
@@ -251,6 +253,8 @@ export function AvatarPage({
               onColorChange={changeColor}
               hairCover={hairCover}
               onHairCoverChange={setHairCover}
+              hairShade={hairShade}
+              onHairShadeChange={setHairShade}
               playing={playing}
               onTogglePlaying={() => setPlaying((previous) => !previous)}
               parts={parts}

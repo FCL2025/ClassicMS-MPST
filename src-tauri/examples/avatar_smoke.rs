@@ -127,7 +127,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
         ]
     };
-    let stand = avatar_frames(&svc, parts(), "stand1", "default", true)?;
+    let stand = avatar_frames(&svc, parts(), "stand1", "default", true, true)?;
     println!(
         "\n== stand1: {} 幀（face_frames {} 幀）==",
         stand.frames.len(),
@@ -156,7 +156,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // ── walk1 全部幀：驗證基準點固定（body origin 絕對位置應各幀相同）──
-    let walk = avatar_frames(&svc, parts(), "walk1", "default", true)?;
+    let walk = avatar_frames(&svc, parts(), "walk1", "default", true, true)?;
     println!(
         "\n== walk1: {} 幀（face_frames {} 幀）==",
         walk.frames.len(),

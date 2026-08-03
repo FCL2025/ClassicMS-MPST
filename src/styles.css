@@ -2115,6 +2115,13 @@ textarea:focus-visible,
   gap: 3px;
 }
 
+/* 帽子遮髮 / 髮型陰影核取方塊的橫排容器。 */
+.avatar-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
 /* 帽子遮髮核取方塊（hairCover）。 */
 .avatar-hair-cover {
   display: flex;
