@@ -88,6 +88,7 @@
 
 - 核心 `src-tauri/src/avatar.rs`（~1070 行）：4 個 pub 函式（`avatar_meta`/`avatar_emotions`/`avatar_equipment`/`avatar_frames`），內嵌 149 層 ZMAP 常數，7 個單元測試。smoke 實測：stand1 幀 0 共 7 層、head y=-33 在 body 上方、z 遞減正確。
 - 資料特例：hairShade 的 UOL 別名連發（1,2,3..→"0"）需按解析後路徑去重，否則同圖疊畫 8 次。
+- 資料特例：hairShade 群組只收編號子節點——部分髮型（如 00033200/00033201）混有殘留的命名 canvas（`그림자`，z=Int(0) 會排最頂層整片蓋住角色與帽子）；WzComparerR2 也只取 `hairShade/0`。
 - 接線：`gui.rs` 4 個 Tauri command、`api.ts` 4 wrapper + 型別、`web-wasm/lib.rs` 4 個 wasm 函式、`worker.ts` 4 個 RPC method、`api.web.ts` 對齊。
 - 前端 4 新元件：`AvatarPage`（狀態容器：skin/action/emotion/playing/parts，longcoat 互斥與 visible 過濾在 `equip()` 與 frames effect）、`AvatarPreview`（canvas 合成、body/face 雙幀序列獨立計時 rAF、整數倍放大置中）、`AvatarShop`（14 部位 tab + grid + 動態分頁 + icon lazy 含 iconRaw 重試）、`AvatarEquipPanel`（三 select + 播放鈕 + 已穿清單點列切換顯示）。`App.tsx` 加 view tab，紙娃娃頁 lazy 掛載且切換不重置狀態。
 

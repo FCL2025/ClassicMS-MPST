@@ -783,6 +783,14 @@ fn collect_canvases<'a>(
             Value::Canvas => push(node, rel),
             Value::SubTree => {
                 for group_child in &node.children {
+                    // hairShade 群組只收編號 canvas（0 本體 + 1..N 的 UOL 染髮別名）：
+                    // 實機資料混有殘留的命名節點（如 00033200 的 그림자，z=Int(0)
+                    // 會被排到最頂層、整片蓋住帽子），WzComparerR2 也只取 hairShade/0。
+                    if child.name == "hairShade"
+                        && !group_child.name.bytes().all(|b| b.is_ascii_digit())
+                    {
+                        continue;
+                    }
                     let group_rel = format!("{rel}/{}", group_child.name);
                     if let Some((canvas, canvas_rel)) = resolve_node(root, &group_rel) {
                         push(canvas, canvas_rel);

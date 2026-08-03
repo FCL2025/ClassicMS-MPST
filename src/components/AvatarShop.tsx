@@ -204,6 +204,23 @@ export function AvatarShop({
   const currentPage = Math.min(page, totalPages - 1);
   const pageItems = items.slice(currentPage * pageSize, currentPage * pageSize + pageSize);
 
+  // 滾輪換頁：滾下=下一頁、滾上=上一頁（到頂/到底不動）。
+  // React 的 onWheel 是 passive listener，無法 preventDefault，所以改綁原生 wheel 事件。
+  useEffect(() => {
+    const wrap = gridWrapRef.current;
+    if (!wrap) return;
+    const onWheel = (event: WheelEvent) => {
+      if (totalPages <= 1) return;
+      event.preventDefault();
+      const step = event.deltaY > 0 ? 1 : -1;
+      setPage((previous) =>
+        Math.min(totalPages - 1, Math.max(0, Math.min(previous, totalPages - 1) + step)),
+      );
+    };
+    wrap.addEventListener("wheel", onWheel, { passive: false });
+    return () => wrap.removeEventListener("wheel", onWheel);
+  }, [totalPages]);
+
   return (
     <section className="avatar-shop" aria-label="裝備列表">
       <div className="avatar-shop-tabs" role="tablist">
