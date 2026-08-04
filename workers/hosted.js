@@ -52,11 +52,13 @@ async function handleData(request, env, url) {
   };
 
   let object;
+  let precompressed = false;
   if (ext === ".json") {
     // JSON 產物以 gzip 存放（key + ".gz"）；取不到時退回未壓縮的 key。
     object = await env.DATA.get(`${key}.gz`);
     if (object) {
       headers["Content-Encoding"] = "gzip";
+      precompressed = true;
     } else {
       object = await env.DATA.get(key);
     }
@@ -71,5 +73,12 @@ async function handleData(request, env, url) {
   if (request.method === "HEAD") {
     return new Response(null, { status: 200, headers });
   }
-  return new Response(object.body, { status: 200, headers });
+  return new Response(object.body, {
+    status: 200,
+    headers,
+    // .json.gz 是預壓縮內容：encodeBody "manual" 告訴 runtime 內容已編碼，
+    // 不要因 Content-Type: application/json 可壓縮就把 gzip bytes 再 gzip 一次
+    // （沒加會變雙層 gzip，瀏覽器只解一層，JSON.parse 失敗）。
+    ...(precompressed ? { encodeBody: "manual" } : {}),
+  });
 }

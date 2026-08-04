@@ -5,7 +5,8 @@
 // 本檔放在 public/，桌面版與 web 版 build 也會原樣複製，但只有 hosted 版
 // （src/api.hosted.ts）會註冊它，其他版本完全不影響，屬無害的多餘檔案。
 
-const CACHE_NAME = "msclassic-hosted-data";
+// v2 清掉修正預壓縮回應前可能留下的雙層 gzip 快取。
+const CACHE_NAME = "msclassic-hosted-data-v2";
 const CACHE_PREFIX = "msclassic-hosted";
 const DATA_PREFIX = "/data/";
 

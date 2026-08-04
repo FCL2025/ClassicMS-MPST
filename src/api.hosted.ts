@@ -10,6 +10,16 @@
 // Service Worker（public/sw-hosted.js）：對同源 /data/ 的不可變資料做 cache-first
 // 快取，二次造訪幾乎零網路。只在 production 且瀏覽器支援時註冊；桌面/web 版
 // 不會 alias 到本檔，完全不會註冊。與資料來源模式無關（本機模式不抓 /data）。
+// v0.20.0 曾快取雙層 gzip 回應；雲端連線前主動清掉舊 cache，避免新版 Worker
+// 已修正後仍被舊 Service Worker 回放壞資料。
+const legacyHostedCacheCleanup =
+  !import.meta.env.DEV && "caches" in window
+    ? window.caches.delete("msclassic-hosted-data").then(
+        () => undefined,
+        () => undefined,
+      )
+    : Promise.resolve();
+
 if (!import.meta.env.DEV && "serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw-hosted.js").catch(() => {
     // 註冊失敗（例如隱私模式）不影響功能，只是沒有離線快取。
@@ -109,7 +119,10 @@ const backend = () => (getDataSource() === "local" ? web : hosted);
 
 export const pickDataDirectory = (): Promise<string | null> => backend().pickDataDirectory();
 
-export const openDataDir = (path?: string): Promise<OpenResult> => backend().openDataDir(path);
+export const openDataDir = async (path?: string): Promise<OpenResult> => {
+  if (getDataSource() === "cloud") await legacyHostedCacheCleanup;
+  return backend().openDataDir(path);
+};
 
 export const storedFolderLabel = (): Promise<string | null> => backend().storedFolderLabel();
 
