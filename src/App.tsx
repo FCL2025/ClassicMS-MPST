@@ -634,7 +634,7 @@ export default function App() {
             {__WEB_BUILD__ ? (
               <p className="welcome-hint">
                 Chrome／Edge 若提示「無法開啟此資料夾，因為其包含系統檔案」，直接取消該對話框，
-                會自動改用相容選擇器，同樣的位置即可正常選取。
+                再按一次「選擇資料夾」即會改用相容選擇器，同樣的位置即可正常選取。
               </p>
             ) : null}
           </section>

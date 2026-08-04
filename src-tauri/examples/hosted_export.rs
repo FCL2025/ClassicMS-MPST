@@ -1,13 +1,14 @@
 //! 雲端託管資料離線 pipeline（docs/HOSTED_DATA.md）。
 //!
 //! 輸入遊戲 bundle 目錄，產出託管用衍生資料集到 `<out_dir>/<version>/`：
-//! `index.json` / `catalog.json` / `tree/**` / `strings/**` / `sheets/**` / `textures/**`。
+//! `index.json` / `catalog.json` / `tree/**` / `strings/**` / `sheets/**` / `textures/**` /
+//! `features/**`（聚合資料：怪物圖鑑、技能書、商城、紙娃娃、動作延遲）。
 //!
 //! 用法：
 //! ```text
 //! cargo run -p msclassic --release --example hosted_export -- \
 //!     <bundle 目錄> <輸出目錄> [--version vYYYYMMDD] [--limit-imgs N] [--limit-sheets N] \
-//!     [--skip-trees] [--skip-strings] [--skip-sheets] [--skip-textures]
+//!     [--skip-trees] [--skip-strings] [--skip-sheets] [--skip-textures] [--skip-features]
 //! ```
 
 use std::collections::{HashMap, HashSet};
@@ -33,6 +34,7 @@ struct Args {
     skip_strings: bool,
     skip_sheets: bool,
     skip_textures: bool,
+    skip_features: bool,
 }
 
 #[derive(Default)]
@@ -48,6 +50,10 @@ struct Stats {
     texture_fail: usize,
     canvas_total: usize,
     canvas_resolved: usize,
+    features_ok: usize,
+    features_fail: usize,
+    feature_counts: serde_json::Map<String, serde_json::Value>,
+    feature_bytes: serde_json::Map<String, serde_json::Value>,
     bytes_catalog: u64,
     bytes_tree: u64,
     bytes_strings: u64,
@@ -113,6 +119,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if !args.skip_textures {
         export_textures(&svc, &out_root, &mut stats)?;
     }
+    if !args.skip_features {
+        export_features(&svc, &out_root, &mut stats)?;
+    }
 
     // ── index.json ──
     let index = serde_json::json!({
@@ -126,6 +135,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "textures": stats.textures,
             "canvas_total": stats.canvas_total,
             "canvas_resolved": stats.canvas_resolved,
+            "features": stats.feature_counts,
         },
         "bytes": {
             "catalog": stats.bytes_catalog,
@@ -133,6 +143,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "strings": stats.bytes_strings,
             "sheets": stats.bytes_sheets,
             "textures": stats.bytes_textures,
+            "features": stats.feature_bytes,
         },
     });
     std::fs::write(
@@ -141,7 +152,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     println!(
-        "\n=== 完成（{:.2?}）：imgs={} trees={}（fail {}） strings={}（fail {}） sheets={}（fail {}） textures={}（fail {}）",
+        "\n=== 完成（{:.2?}）：imgs={} trees={}（fail {}） strings={}（fail {}） sheets={}（fail {}） textures={}（fail {}） features={}（fail {}）",
         t0.elapsed(),
         stats.imgs,
         stats.trees,
@@ -151,7 +162,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         stats.sheets,
         stats.sheet_fail,
         stats.textures,
-        stats.texture_fail
+        stats.texture_fail,
+        stats.features_ok,
+        stats.features_fail
     );
     println!(
         "canvas: total={} resolved={}（{:.2}%）",
@@ -555,6 +568,111 @@ fn export_textures(
     Ok(())
 }
 
+// ── features/（聚合資料）──────────────────────────────────────
+
+/// features 階段：直接呼叫 DataService / avatar 的 pub 聚合函式，
+/// 各檔獨立失敗（印警告、fail 計數），不影響其他檔與整個 pipeline。
+fn export_features(
+    svc: &DataService,
+    out_root: &Path,
+    stats: &mut Stats,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let features_dir = out_root.join("features");
+    std::fs::create_dir_all(&features_dir)?;
+
+    feature_step(&features_dir, "monster_book.json", stats, || {
+        let book = svc.get_monster_book()?;
+        Ok((serde_json::to_vec(&*book)?, book.len()))
+    });
+    feature_step(&features_dir, "skill_book.json", stats, || {
+        let book = svc.get_skill_book()?;
+        Ok((serde_json::to_vec(&*book)?, book.len()))
+    });
+    feature_step(&features_dir, "commodity.json", stats, || {
+        let items = svc.get_commodity_items()?;
+        Ok((serde_json::to_vec(&items)?, items.len()))
+    });
+    feature_step(&features_dir, "avatar_equipment.json", stats, || {
+        let items = msclassic::avatar::avatar_equipment(svc)?;
+        Ok((serde_json::to_vec(&items)?, items.len()))
+    });
+    feature_step(&features_dir, "avatar_meta.json", stats, || {
+        let meta = msclassic::avatar::avatar_meta(svc)?;
+        Ok((serde_json::to_vec(&meta)?, meta.actions.len()))
+    });
+    feature_step(&features_dir, "action_delays.json", stats, || {
+        // 語意照抄 skill.rs 的 action_delays：`Character/00002000` 根的非 info
+        // 子節點各為一個動作，其幀子節點的 `delay` 取絕對值加總；幀缺 delay
+        // 或值非數字時該幀無貢獻。
+        let tree = svc.tree_for("Character/00002000")?;
+        let delays: serde_json::Map<String, serde_json::Value> = tree
+            .children
+            .iter()
+            .filter(|action| action.name != "info")
+            .map(|action| {
+                let total: i64 = action
+                    .children
+                    .iter()
+                    .filter_map(|frame| frame.find("delay").and_then(|n| node_as_i64(&n.value)))
+                    .map(i64::abs)
+                    .sum();
+                (action.name.clone(), serde_json::json!(total))
+            })
+            .collect();
+        let count = delays.len();
+        Ok((serde_json::to_vec(&delays)?, count))
+    });
+
+    println!(
+        "[features] 完成：ok={} fail={}",
+        stats.features_ok, stats.features_fail
+    );
+    Ok(())
+}
+
+/// 跑一個 features 檔的產出（run 回 JSON bytes 與清單筆數），寫檔並記帳；
+/// 任何一步失敗只印警告、累計 fail。
+fn feature_step(
+    dir: &Path,
+    file: &str,
+    stats: &mut Stats,
+    run: impl FnOnce() -> Result<(Vec<u8>, usize), Box<dyn std::error::Error>>,
+) {
+    let result = run().and_then(|(json, count)| {
+        std::fs::write(dir.join(file), &json)?;
+        Ok((json.len() as u64, count))
+    });
+    match result {
+        Ok((bytes, count)) => {
+            let key = file.trim_end_matches(".json");
+            stats
+                .feature_counts
+                .insert(key.to_string(), serde_json::json!(count));
+            stats
+                .feature_bytes
+                .insert(key.to_string(), serde_json::json!(bytes));
+            stats.features_ok += 1;
+            println!("[features] {file}: {count} 筆（{bytes} bytes）");
+        }
+        Err(e) => {
+            println!("!! [features] {file}: {e}");
+            stats.features_fail += 1;
+        }
+    }
+}
+
+/// 數值節點 → i64（與 skill.rs 的 value_as_i64 同規則；非數值回 None）。
+fn node_as_i64(value: &Value) -> Option<i64> {
+    match value {
+        Value::U8(v) => Some(i64::from(*v)),
+        Value::U16(v) => Some(i64::from(*v)),
+        Value::Int(v) => Some(i64::from(*v)),
+        Value::Int2(a, _) => Some(i64::from(*a)),
+        Value::Double(v) => Some(*v as i64),
+        _ => None,
+    }
+}
+
 // ── CLI / 工具 ───────────────────────────────────────────────
 
 fn parse_args() -> Result<Args, Box<dyn std::error::Error>> {
@@ -566,6 +684,7 @@ fn parse_args() -> Result<Args, Box<dyn std::error::Error>> {
     let mut skip_strings = false;
     let mut skip_sheets = false;
     let mut skip_textures = false;
+    let mut skip_features = false;
 
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -581,12 +700,13 @@ fn parse_args() -> Result<Args, Box<dyn std::error::Error>> {
             "--skip-strings" => skip_strings = true,
             "--skip-sheets" => skip_sheets = true,
             "--skip-textures" => skip_textures = true,
+            "--skip-features" => skip_features = true,
             other if other.starts_with("--") => return Err(format!("未知參數: {other}").into()),
             _ => positional.push(arg),
         }
     }
     if positional.len() != 2 {
-        return Err("用法: hosted_export <bundle_dir> <out_dir> [--version V] [--limit-imgs N] [--limit-sheets N] [--skip-trees] [--skip-strings] [--skip-sheets] [--skip-textures]".into());
+        return Err("用法: hosted_export <bundle_dir> <out_dir> [--version V] [--limit-imgs N] [--limit-sheets N] [--skip-trees] [--skip-strings] [--skip-sheets] [--skip-textures] [--skip-features]".into());
     }
     let (year, month, day) = today();
     Ok(Args {
@@ -600,6 +720,7 @@ fn parse_args() -> Result<Args, Box<dyn std::error::Error>> {
         skip_strings,
         skip_sheets,
         skip_textures,
+        skip_features,
     })
 }
 

@@ -81,7 +81,7 @@ WebP 壓縮率實測（隨機抽樣 30 張 sheet，`cwebp`）：
       不需要獨立 rects/ 檔
 - [x] `rects/`：併入 tree JSON（見上）
 - [x] `strings/`：文字表（70 個 TextAsset 原樣落地）
-- [ ] `features/`：怪物圖鑑、技能書、商城、紙娃娃清單等衍生 JSON
+- [x] `features/`：怪物圖鑑、技能書、商城、紙娃娃清單等衍生 JSON
       （現有 monster_demo / skill_dump 等邏輯可直接複用）
 - [ ] `audio/`：音效檔（先測量體積再決定格式）
 - [x] `index.json`：資料版本、各類數量與位元組統計（未含逐檔 hash，上傳差異靠
@@ -132,7 +132,7 @@ R2 上傳用 `wrangler r2 object put` 或 rclone（萬級檔案建議 rclone 分
        catalog JSON + rects + strings），本機驗證體積與正確性
 2. [x] **M2 前端 hosted 模式**：`api.hosted.ts` 跑通節點瀏覽 + 圖片預覽
        （本機起靜態伺服器指向 `out/hosted` 即可開發，不必先上 R2）
-3. [ ] **M3 功能資料**：tooltip、怪物圖鑑、技能書、商城、紙娃娃接上 hosted 資料
+3. [x] **M3 功能資料**：tooltip、怪物圖鑑、技能書、商城、紙娃娃接上 hosted 資料
 4. [ ] **M4 部署**：R2 bucket + Workers API + Service Worker 快取上線
 5. [ ] **M5 音效**：測量、轉檔、接上
 6. [ ] **M6 更新流程**：遊戲更新 → 一鍵重跑 pipeline + 差異上傳腳本
@@ -188,3 +188,30 @@ bash scripts/hosted_to_webp.sh out/hosted/v20260804   # PNG → lossless WebP（
   匯出與音效同樣提示尚未支援。
 - M2 刻意取捨：searchNodes 只搜 catalog 路徑與「已載入過」的 tree 節點
   （不主動抓新 tree，避免爆量下載）；字串名稱搜尋待 M3 隨功能資料一起補。
+
+## M3 實測結果（2026-08-04）
+
+分工原則（依資料性質）：**清單類**（要掃多個 img 才能組出來的）由 pipeline 預算，
+**單物件明細**由前端按需從 tree/strings 推導。
+
+- pipeline（hosted_export 新增 features 階段，`--skip-features` 可跳過）：
+  `features/` 六檔——monster_book.json（343 隻，含 drops）、skill_book.json
+  （82 個 job 分組，category 已分類）、commodity.json（692 件，含 iconBase64）、
+  avatar_equipment.json（7,615 件）、avatar_meta.json（254 動作 + 8 膚色）、
+  action_delays.json（254 個動作總延遲，供技能詳情）。全部直接呼叫 Rust 既有的
+  pub 聚合函式產生，與桌面版同源。
+- 前端：`src/hosted/core.ts`（從 api.hosted.ts 抽出的共用機制：tree/strings 快取、
+  sheet 切圖、UOL 解析）+ 四個功能模組：
+  - `tooltip.ts`：物品 tooltip（by path / by id），by-id 支援全部類別
+    （移植 commodity.rs 的 item_path_candidates 映射；比 Rust 版只查 Character 更廣）
+  - `monster.ts`：圖鑑清單（features）+ 怪物明細（stats/frames 切圖/drops+icon/
+    出沒地圖，全部前端推導）+ 商城清單（features）
+  - `skill.ts`：技能清單（features）+ 技能詳情（levels/actions/actionDelays）
+  - `avatar.ts`：紙娃娃合成完整移植（ZMAP 149 層、錨點對齊、hairCover/hairShade、
+    face 獨立幀），**與 Rust avatar_smoke 同參數對照逐行一致**
+- api.hosted.ts 的 stub 已全部換成模組 re-export；`initialView` 新增
+  `?view=tree|avatar|monster|skill` 深連結（也方便無頭瀏覽器測試）。
+- 瀏覽器實測（Edge headless + CDP）：怪物圖鑑明細（嫩寶 stats/10 掉落物含 icon/
+  35 張出沒地圖）、技能頁（精靈的祝福，等級滑桿數值正確）、紙娃娃（裝備格 + 預覽
+  渲染）、物品 tooltip（藍色毛帽）全部正確。
+- 剩餘未接：匯出（M4 後評估）、音效（M5）。

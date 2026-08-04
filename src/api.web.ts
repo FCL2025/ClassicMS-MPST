@@ -292,7 +292,14 @@ export const openDataDir = async (path?: string): Promise<OpenResult> => {
   // 啟動自動載入(initialDataDir 回傳的 path):OPFS 已有上次複製的資料,
   // 直接從快取開啟;快取被瀏覽器清掉才回退到手動選擇。
   if (!picked && path != null) {
-    const cached = await rpc<OpenResult | null>("openCached");
+    let cached: OpenResult | null = null;
+    try {
+      cached = await rpc<OpenResult | null>("openCached");
+    } finally {
+      // 與下方 importBundles 路徑一致:結束時清掉進度列,否則
+      // 「正在載入資產索引…」會一直留著。
+      clearProgress();
+    }
     if (cached) return { ...cached, data_dir: path };
   }
   if (!picked) {
