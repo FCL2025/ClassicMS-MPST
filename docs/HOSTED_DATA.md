@@ -255,10 +255,14 @@ vite.config.hosted.ts：build 時資料根預設同源 `/data`（dev 仍是 loca
 1. `npx wrangler login`（瀏覽器授權 Cloudflare）
 2. `npx wrangler r2 bucket create msclassic-data`
 3. `npm run upload:hosted-data -- v20260804`（44k 檔、23 批，失敗自動重試一次）
-4. `npm run deploy:hosted`（部署到 `msclassic-hosted.<帳號子域>.workers.dev`）
-5. 網域：預設不綁；要綁 `classic.maplepstutorial.com` 或子網域時，在
-   `wrangler.hosted.jsonc` 加 routes（注意：現有 wrangler.jsonc 的本機資料夾
-   網頁版佔用同一網域，兩者擇一或分子網域）
+4. `npm run deploy:hosted`（部署預覽 Worker 到 `msclassic-hosted.<帳號子域>.workers.dev`）
+5. 網域（2026-08-04 已定案）：正式站 `classic.maplepstutorial.com` 直接換成
+   hosted 版——根目錄 `wrangler.jsonc` 改為 hosted 設定（`main: workers/hosted.js`
+   + dist-hosted + R2 binding），**Worker 名稱維持 `msclassic-viewer`**，
+   既有 GitHub 串接與 custom domain 不用動；Cloudflare Build command 由
+   `npm run build:web` 改為 `npm run build:hosted` 後，push 即自動部署正式站。
+   舊的本機資料夾版（dist-web）退役，其功能由 hosted 版的來源切換器涵蓋；
+   `wrangler.hosted.jsonc` 保留作 workers.dev 預覽環境。
 
 本機驗證已過：gzip 資料集端到端（tooltip、怪物明細、切圖）、serve_hosted 的
 .json→.json.gz fallback（curl --compressed 比對一致）、upload dry-run

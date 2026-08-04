@@ -1,9 +1,23 @@
+// 正式站設定：classic.maplepstutorial.com 由本檔部署（Cloudflare GitHub 串接，
+// push 到 master 自動 build + `npx wrangler deploy`）。
+// 自 v0.20.0 起本 Worker 改為 hosted 模式（靜態站 dist-hosted + R2 資料集），
+// 頁面右上角可切換「雲端資料／本機資料夾」；舊的本機資料夾版（dist-web）退役。
+// 資料上傳（GitHub 部署不會做這步）：npm run upload:hosted-data -- <version>
+// Build command 需為 `npm run build:hosted`（含 wasm 建置）。
 {
   "name": "msclassic-viewer",
+  "main": "workers/hosted.js",
   "compatibility_date": "2026-07-25",
   "assets": {
-    "directory": "./dist-web"
+    "directory": "./dist-hosted",
+    "binding": "ASSETS"
   },
+  "r2_buckets": [
+    {
+      "binding": "DATA",
+      "bucket_name": "msclassic-data"
+    }
+  ],
   "routes": [
     {
       "pattern": "classic.maplepstutorial.com",
