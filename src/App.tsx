@@ -16,6 +16,8 @@ import {
   onProgress,
   openDataDir,
   pickDataDirectory,
+  reconnectDataDirectory,
+  storedFolderLabel,
   typeLabel,
   type ChildEntry,
   type ImportProgress,
@@ -198,6 +200,23 @@ export default function App() {
     }
   }, [loadDataDirectory]);
 
+  // web 版「記住資料夾」：有記錄時歡迎頁提供一鍵重新連線（桌面版恆 null 不顯示）。
+  const [reconnectLabel, setReconnectLabel] = useState<string | null>(null);
+
+  const reconnectStoredFolder = useCallback(async () => {
+    try {
+      const label = await reconnectDataDirectory();
+      if (typeof label === "string") {
+        setReconnectLabel(label);
+        await loadDataDirectory(label);
+      }
+    } catch (error) {
+      const message = String(error);
+      setDataError(message);
+      setStatus(`重新連線失敗：${message}`);
+    }
+  }, [loadDataDirectory]);
+
   const childrenOf = useCallback((path: string) => childrenMap.get(path), [childrenMap]);
 
   const loadChildren = useCallback(
@@ -267,11 +286,16 @@ export default function App() {
   );
 
   // 自動化測試用：設定 MSCLASSIC_DATA_DIR 時啟動即開啟該資料目錄。
+  // web 版則由 initialDataDir 改回傳 OPFS 快取 / 記住的資料夾標籤，達成啟動自動載入。
   useEffect(() => {
     initialDataDir()
       .then((dir) => {
         if (dir) void loadDataDirectory(dir);
       })
+      .catch(() => undefined);
+    // web 版「記住資料夾」：有記錄時在歡迎頁顯示一鍵重新連線。
+    storedFolderLabel()
+      .then((label) => setReconnectLabel(label))
       .catch(() => undefined);
     // 自動化測試用：MSCLASSIC_INITIAL_VIEW 可指定啟動 view（tree/avatar/monster/skill）。
     initialView()
@@ -589,6 +613,16 @@ export default function App() {
             >
               {loadingData ? "正在建立資產索引…" : "選擇資料夾"}
             </button>
+            {reconnectLabel ? (
+              <button
+                className="welcome-reconnect-button"
+                type="button"
+                disabled={loadingData}
+                onClick={() => void reconnectStoredFolder()}
+              >
+                重新連線上次資料夾：{reconnectLabel}
+              </button>
+            ) : null}
             {dataError ? <p className="data-source-error" role="alert">{dataError}</p> : null}
             <p className="welcome-hint">程式只會讀取遊戲資料，不會修改原始 bundle。</p>
             {__WEB_BUILD__ ? (

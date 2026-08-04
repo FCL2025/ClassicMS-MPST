@@ -4,7 +4,12 @@
 
 import { zipSync } from "fflate";
 import { clearProgress, rpc, subscribeProgress } from "./web/client";
-import { pickFolder, type PickedFolder } from "./web/pickFolder";
+import {
+  pickFolder,
+  reconnectStoredFolder,
+  storedFolderState,
+  type PickedFolder,
+} from "./web/pickFolder";
 
 export type ChildEntry =
   | { kind: "Category"; name: string; path: string; img_count: number }
@@ -272,6 +277,9 @@ export interface AvatarFrames {
 // 所以選完資料夾先存在這裡,openDataDir 時餵給 Worker。
 let pendingPick: PickedFolder | null = null;
 
+// 上次成功開啟的資料夾標籤(顯示用);搭配 OPFS 快取做啟動自動載入。
+const CACHED_DIR_LABEL_KEY = "msclassic-data-dir-label";
+
 export const pickDataDirectory = async (): Promise<string | null> => {
   const picked = await pickFolder();
   if (!picked) return null;
@@ -279,8 +287,14 @@ export const pickDataDirectory = async (): Promise<string | null> => {
   return picked.label;
 };
 
-export const openDataDir = async (_path?: string): Promise<OpenResult> => {
+export const openDataDir = async (path?: string): Promise<OpenResult> => {
   let picked = pendingPick;
+  // 啟動自動載入(initialDataDir 回傳的 path):OPFS 已有上次複製的資料,
+  // 直接從快取開啟;快取被瀏覽器清掉才回退到手動選擇。
+  if (!picked && path != null) {
+    const cached = await rpc<OpenResult | null>("openCached");
+    if (cached) return { ...cached, data_dir: path };
+  }
   if (!picked) {
     picked = await pickFolder();
     if (!picked) throw new Error("已取消選擇資料夾");
@@ -288,10 +302,23 @@ export const openDataDir = async (_path?: string): Promise<OpenResult> => {
   }
   try {
     const result = await rpc<OpenResult>("importBundles", picked.files);
+    localStorage.setItem(CACHED_DIR_LABEL_KEY, picked.label);
     return { ...result, data_dir: picked.label };
   } finally {
     clearProgress();
   }
+};
+
+/** 歡迎頁「重新連線」按鈕用:回傳記住的資料夾標籤,沒有回 null(桌面版恆 null)。 */
+export const storedFolderLabel = async (): Promise<string | null> =>
+  (await storedFolderState())?.label ?? null;
+
+/** 重新連線記住的資料夾;需由使用者點擊觸發(requestPermission 要手勢)。 */
+export const reconnectDataDirectory = async (): Promise<string | null> => {
+  const picked = await reconnectStoredFolder();
+  if (!picked) return null;
+  pendingPick = picked;
+  return picked.label;
 };
 
 export const listChildren = (path: string) => rpc<ChildEntry[]>("listChildren", path);
@@ -394,7 +421,27 @@ export const exportSubtree = async (path: string): Promise<ExportStats> => {
 
 export const initialPath = (): Promise<string | null> => Promise.resolve(null);
 export const initialView = (): Promise<string | null> => Promise.resolve(null);
-export const initialDataDir = (): Promise<string | null> => Promise.resolve(null);
+
+/**
+ * 啟動自動載入(對齊桌面版 MSCLASSIC_DATA_DIR 的掛點,App.tsx 啟動時呼叫):
+ * 1. OPFS 快取完整 → 直接回標籤,openDataDir 會從快取開啟,完全免操作。
+ * 2. 否則若有記住的 FSA 資料夾且權限仍在(Chrome 122+ 持久授權)→ 免手勢
+ *    重新連線,走增量同步把遊戲更新補進 OPFS。
+ * 3. 都不行 → null,由使用者手動選擇或按「重新連線」。
+ */
+export const initialDataDir = async (): Promise<string | null> => {
+  const label = localStorage.getItem(CACHED_DIR_LABEL_KEY);
+  if (label && (await rpc<boolean>("checkCached"))) return label;
+  const stored = await storedFolderState();
+  if (stored?.granted) {
+    const picked = await reconnectStoredFolder();
+    if (picked) {
+      pendingPick = picked;
+      return picked.label;
+    }
+  }
+  return null;
+};
 
 /** web 版直接開新分頁。 */
 export const openExternal = (url: string): Promise<void> => {

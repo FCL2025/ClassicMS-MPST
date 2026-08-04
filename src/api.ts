@@ -293,6 +293,10 @@ export const initialPath = () => invoke<string | null>("initial_path");
 export const initialView = () => invoke<string | null>("initial_view");
 export const initialDataDir = () => invoke<string | null>("initial_data_dir");
 
+// web 版「記住資料夾 / 重新連線」專用(api.web.ts 才有實作);桌面版不需要,恆 null。
+export const storedFolderLabel = (): Promise<string | null> => Promise.resolve(null);
+export const reconnectDataDirectory = (): Promise<string | null> => Promise.resolve(null);
+
 /** 以系統預設瀏覽器開啟外部連結（桌面版走 opener plugin）。 */
 export const openExternal = (url: string) => openUrl(url);
 

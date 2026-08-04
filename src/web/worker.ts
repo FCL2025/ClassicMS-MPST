@@ -87,6 +87,36 @@ async function readStoredManifest(
   }
 }
 
+/** 讀 sidecar 並確認 OPFS 內的 bundle 完整(存在且大小一致);不完整回 null。 */
+async function cachedManifest(): Promise<BundleMeta[] | null> {
+  try {
+    const root = await navigator.storage.getDirectory();
+    const stored = await readStoredManifest(root);
+    const names = Object.keys(stored).sort();
+    if (names.length === 0) return null;
+    const manifest: BundleMeta[] = [];
+    for (const name of names) {
+      const file = await (await root.getFileHandle(name)).getFile();
+      if (file.size !== stored[name].size) return null;
+      manifest.push({ name, size: file.size, lastModified: stored[name].lastModified });
+    }
+    return manifest;
+  } catch {
+    // OPFS 不可用或檔案被瀏覽器清掉:一律視為無快取。
+    return null;
+  }
+}
+
+/** 啟動自動載入:資料已在 OPFS,直接開啟,不重選資料夾。無快取時回 null。 */
+async function openCached(): Promise<unknown | null> {
+  const manifest = await cachedManifest();
+  if (!manifest) return null;
+  const shims = await ready;
+  await openSyncHandles(shims, manifest);
+  report({ phase: "catalog", percent: 100, message: "正在載入資產索引…" });
+  return wasm.open(manifest);
+}
+
 /** 把異動的 bundle 複製進 OPFS(逐檔分塊 + 進度回報),回傳排序後的 manifest。 */
 async function syncBundlesToOpfs(files: File[]): Promise<BundleMeta[]> {
   const sorted = [...files].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
@@ -214,8 +244,12 @@ async function exportSubtree(shims: Shims, path: string): Promise<unknown> {
 }
 
 async function dispatch(method: string, args: unknown[]): Promise<unknown> {
+  // checkCached 只看 OPFS 中繼資料,不需等 wasm 初始化(啟動探測用)。
+  if (method === "checkCached") return (await cachedManifest()) !== null;
   const shims = await ready;
   switch (method) {
+    case "openCached":
+      return openCached();
     case "importBundles":
       return importBundles(args[0] as File[]);
     case "listChildren":

@@ -22,6 +22,25 @@ interface FileSystemDirectoryHandle {
   entries(): AsyncIterableIterator<[string, FileSystemHandle]>;
 }
 
+interface FileSystemHandlePermissionDescriptor {
+  mode?: "read" | "readwrite";
+}
+
+interface FileSystemHandle {
+  queryPermission(descriptor?: FileSystemHandlePermissionDescriptor): Promise<PermissionState>;
+  requestPermission(descriptor?: FileSystemHandlePermissionDescriptor): Promise<PermissionState>;
+}
+
+interface DirectoryPickerOptions {
+  id?: string;
+  mode?: "read" | "readwrite";
+  startIn?: string;
+}
+
+interface Window {
+  showDirectoryPicker(options?: DirectoryPickerOptions): Promise<FileSystemDirectoryHandle>;
+}
+
 interface DedicatedWorkerGlobalScope {
   postMessage(message: unknown): void;
   onmessage: ((this: DedicatedWorkerGlobalScope, ev: MessageEvent) => unknown) | null;

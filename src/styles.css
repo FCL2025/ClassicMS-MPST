@@ -1561,6 +1561,26 @@ textarea:focus-visible,
   color: var(--disabled);
 }
 
+.welcome-reconnect-button {
+  min-height: 38px;
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  color: var(--accent);
+  padding: 0 18px;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.welcome-reconnect-button:not(:disabled):hover {
+  border-color: var(--accent);
+}
+
+.welcome-reconnect-button:disabled {
+  color: var(--disabled);
+}
+
 .data-source-error {
   width: 100%;
   margin: 16px 0 0;
