@@ -3,10 +3,12 @@
 // 兩種選擇管道:
 // 1. File System Access(showDirectoryPicker,Chromium 限定):拿到可存入
 //    IndexedDB 的目錄控制代碼,下次可重新連線不用重選;但 Chromium 有系統目錄
-//    封鎖清單(AppData、Downloads、磁碟根目錄等會被原生對話框擋下)。
+//    封鎖清單(AppData、Downloads、Program Files、磁碟根等會被原生對話框擋下
+//    「包含系統檔案」),被擋時對話框內只能取消,程式端收到 AbortError。
 // 2. <input type="file" webkitdirectory>(全瀏覽器):無封鎖清單,但 File 物件
 //    無法跨 session 保存,關閉後只能重選。
-// 支援 FSA 時優先走 1,被取消或環境不允許時回退 2。
+// 支援 FSA 時優先走 1,取消或失敗時回退 2;回退後才選成功的位置視為被封鎖,
+// 之後直接走 2(見 FSA_DISABLED_KEY)。
 
 import { loadStoredFolder, saveStoredFolder } from "./handleStore";
 
@@ -38,9 +40,20 @@ function sortByName(files: File[]): File[] {
   return files.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 }
 
+// Chromium 的 showDirectoryPicker 有系統目錄封鎖清單(Downloads、Program Files、
+// 磁碟根等),遊戲資料夾很常落在這些位置;被封鎖時錯誤只顯示在原生對話框內,
+// 使用者只能取消,程式端收到的仍是 AbortError,無法與主動取消區分。
+// 因此取消時一律回退 webkitdirectory(無封鎖限制)再給一次機會;
+// 若使用者是在回退後才選成功,代表該位置很可能被封鎖,之後直接走
+// webkitdirectory,不再每次多跳一個對話框。
+const FSA_DISABLED_KEY = "msclassic-fsa-disabled";
+
 /** 主入口:回傳 null 表示使用者取消。支援 FSA 時優先走 showDirectoryPicker。 */
 export async function pickFolder(): Promise<PickedFolder | null> {
-  if (window.showDirectoryPicker) {
+  // d.ts 把 showDirectoryPicker 宣告成必存在,這裡用 typeof 檢查避開 TS2774。
+  const fsaAvailable =
+    typeof window.showDirectoryPicker === "function" && !localStorage.getItem(FSA_DISABLED_KEY);
+  if (fsaAvailable) {
     try {
       const handle = await window.showDirectoryPicker({ id: "msclassic-data", mode: "read" });
       const picked = await fromDirectoryHandle(handle);
@@ -48,13 +61,17 @@ export async function pickFolder(): Promise<PickedFolder | null> {
       void saveStoredFolder(handle, picked.label);
       return picked;
     } catch (error) {
-      // 使用者取消(AbortError)就直接回 null;其他錯誤(封鎖目錄、環境不允許)
-      // 回退 webkitdirectory,讓被擋的位置仍有機會選。
-      if (error instanceof DOMException && error.name === "AbortError") return null;
+      // 找不到 bundle 是選錯資料夾,直接報錯;其餘(含 AbortError)往下回退。
       if (error instanceof Error && error.message.startsWith(NO_BUNDLE_MESSAGE)) throw error;
     }
   }
-  return pickViaInput();
+  const picked = await pickViaInput();
+  // FSA 對話框沒選成、改用輸入框才選成:該位置很可能在封鎖清單上,
+  // 記住之後直接用輸入框(清除網站資料可重置)。
+  if (picked && fsaAvailable) {
+    localStorage.setItem(FSA_DISABLED_KEY, "1");
+  }
+  return picked;
 }
 
 /** 重新連線上次用 showDirectoryPicker 選過的資料夾;沒記錄或未獲授權回 null。 */
