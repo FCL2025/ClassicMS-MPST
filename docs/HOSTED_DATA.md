@@ -1,0 +1,190 @@
+# 雲端託管資料計畫（免本機遊戲資料夾）
+
+> 狀態：**M1 完成**（2026-08-04 pipeline 全量跑完，見「M1 實測結果」）
+> 目標：Web 版使用者打開網頁即可瀏覽全部遊戲資料，不再需要選擇本機資料夾。
+
+## 背景
+
+目前 Web 版要求使用者選擇自己電腦裡的遊戲資料夾，bundle 複製進 OPFS 後由
+WASM 核心本機解析。這對沒有安裝遊戲（或裝在非 Windows 裝置）的使用者是一道
+高門檻。本計畫改為：離線預先把 bundles 解析成「衍生資料集」，託管到
+Cloudflare，前端純 HTTP 按需抓取。
+
+關鍵決策（2026-08-04 分析結論）：
+
+- **不用 D1 存素材**。D1 是關聯式資料庫，不適合 GB 級二進位資產。
+  素材放 **R2**（免 egress 流量費，免費額度 10GB 儲存）；
+  D1 只視需要放查詢型索引（資料量小時連 D1 都可省略，索引直接放 R2 當靜態檔）。
+- **不託管原始 bundles**，只託管預處理後的衍生資料（WebP 圖片 + JSON）。
+  原始 bundles 沒有必要暴露，也能減少體積。
+- 前端 API 介面（`src/api.ts` 的 export 契約）不變，新增一個 hosted 實作，
+  與 `api.web.ts`（本機資料夾）並存，部署時二選一或讓使用者切換。
+
+## 資料量評估（2026-08-04 實測）
+
+以本機 `out/` 既有匯出產物與 catalog 快取測量：
+
+| 資料類別 | 檔案數 | 原始大小 | 託管形式 | 預估託管大小 |
+|---|---|---|---|---|
+| Sprite sheets（全遊戲） | 14,027 PNG | 2.18 GB | WebP lossless | **約 1.0 GB** |
+| UI sprites（已切單圖） | 1,619 PNG | 45 MB | WebP lossless | 約 20 MB |
+| Catalog 樹索引 | 1 JSON | 4.5 MB | JSON（可再切分） | 約 4.5 MB |
+| 文字 / 字串表 JSON | 數百 | 5.9 MB | JSON | 約 6 MB |
+| 音效 | 未測量 | 未測量 | 原格式或 AAC | TBD |
+| **合計** | | | | **約 1.1 GB** |
+
+WebP 壓縮率實測（隨機抽樣 30 張 sheet，`cwebp`）：
+
+- lossless：PNG 的 **45.4%**
+- q90 lossy（alpha_q 100）：PNG 的 38.9%（像素圖有損，預設採 lossless）
+
+推論：
+
+- 全量資料集約 1.1 GB，**R2 免費額度（10GB）綽綽有餘**。
+- 使用者單次瀏覽只抓看得到的 sheet（平均單張 163 KB PNG → 約 75 KB WebP），
+  加上 edge cache，一般 session 流量是 MB 級，體感可接近本機。
+- sheet 平均不大，「整張 sheet 下載 + 前端 canvas 切圖」可行
+  （canvas→rect 映射已解出，見 README 已知資料限制），不必預切 70 萬張單幀。
+  例外：圖鑑 / tooltip 等列表情境會同時顯示大量跨 sheet 的 icon，
+  這類「熱點素材」適合預切單圖。
+
+## 目標架構
+
+```
+離線 pipeline（開發機，遊戲更新後重跑）
+  遊戲 bundles
+    ├─→ sprite sheets → WebP（lossless）        ─┐
+    ├─→ 熱點素材（item/mob/skill icon）→ 預切 WebP ├─→ R2 bucket
+    ├─→ catalog 樹 + canvas→rect 映射 → JSON     ─┤   （key 前綴帶資料版本）
+    ├─→ 文字 / tooltip / 圖鑑 / 技能資料 → JSON   ─┘
+    └─→ index.json（目前資料版本 + 清單）
+
+線上（Cloudflare）
+  R2 bucket ◄── Workers API（快取標頭、CORS、版本路由）
+     ▲
+  Web 前端（hosted 版 api 實作）
+     ├─ 節點樹 / 搜尋 / tooltip：fetch JSON
+     ├─ 圖片：fetch sheet WebP + rect，canvas 切圖；熱點圖直接 <img>
+     └─ Service Worker：已看過的資源本機快取
+```
+
+## 離線 pipeline 設計
+
+新增 Rust 工具（`src-tauri/examples` 或獨立 binary），輸入 bundle 目錄，
+輸出到 `out/hosted/<版本>/`：
+
+- [x] `sheets/`：全部 sprite sheet（11,535 atlas 頁）→ PNG 後以 `scripts/hosted_to_webp.sh`
+      平行轉 lossless WebP
+- [ ] `icons/`：預切熱點素材（物品 icon、怪物帧、技能 icon、商城圖）
+- [x] `tree/`：節點樹 JSON，依 img 切分（11,955 個檔）；canvas 的 rect/origin
+      metadata 直接內嵌在 tree JSON 的 canvas 節點上（`canvas: {sheet,page,x,y,w,h,ox,oy}`），
+      不需要獨立 rects/ 檔
+- [x] `rects/`：併入 tree JSON（見上）
+- [x] `strings/`：文字表（70 個 TextAsset 原樣落地）
+- [ ] `features/`：怪物圖鑑、技能書、商城、紙娃娃清單等衍生 JSON
+      （現有 monster_demo / skill_dump 等邏輯可直接複用）
+- [ ] `audio/`：音效檔（先測量體積再決定格式）
+- [x] `index.json`：資料版本、各類數量與位元組統計（未含逐檔 hash，上傳差異靠
+      rclone 自身的 checksum）
+
+版本化：key 前綴用資料版本（如 `v2026-08-04/`），`index.json` 指向目前版本。
+遊戲更新時上傳新版本前綴、切換 index，使用者端原子切換、舊版可留可清。
+R2 上傳用 `wrangler r2 object put` 或 rclone（萬級檔案建議 rclone 分批）。
+
+## 前端改造
+
+- [x] 新增 `src/api.hosted.ts`：實作與 `api.ts` 相同的 export 契約，
+      內部走 fetch + 前端 canvas 切圖（`getImage` 回 base64 的契約維持不變）
+- [x] 獨立 `vite.config.hosted.ts`（alias 切換 + define 注入
+      `__HOSTED_DATA_BASE__` / `__HOSTED_DATA_VERSION__`），
+      `npm run dev:hosted` 一鍵起資料伺服器 + vite，`npm run build:hosted` 建到 `dist-hosted/`
+- [ ] Service Worker：快取 R2 資源（Cache API，版本前綴即天然快取鍵）
+- [x] 首屏：進站直接載入 catalog + index 即開（`initialDataDir` 直接回標籤，
+      免選資料夾）；熱門功能資料屬 M3
+- [ ] 列表預取：瀏覽某分類時背景預取該分類其餘 sheet
+- [ ] 保留「讀本機資料夾」作為進階選項（可用自己版本的資料）
+
+## UX 目標
+
+- 首次進站到可互動 < 3 秒（只抓 catalog 頂層 + index，KB～低 MB 級）
+- 點節點看圖：sheet 未快取時 < 500ms（edge cache 命中）；已快取即時
+- 重複造訪：Service Worker 命中，接近桌面版體感
+
+## 成本估算（Cloudflare 免費額度）
+
+- R2 儲存 10GB：資料集實測約 1.5GB（見 M1 實測結果）→ 免費
+- R2 Class B（讀）每月 1,000 萬次免費：個人工具站級流量大概率免費
+- Workers 每日 10 萬請求免費：同上
+- 上傳一次性約 1.5 萬個 Class A 操作（免費額度每月 100 萬）→ 免費
+
+## 風險與注意事項
+
+- **版權**：託管 = 公開再散佈 Nexon 遊戲資產，有 DMCA 下架風險。
+  現行「讀本機檔案」模式無此問題。此風險已在決策時確認過，仍記錄在此。
+- 遊戲更新後需重跑 pipeline 並上傳差異；流程要盡量一鍵化。
+- 音效體積未測量，若過大（>數百 MB）需評估是否只上常用音效或轉 AAC。
+- R2 公開 bucket 無法擋爬蟲全量下載；如需基本防護可在 Workers 加
+  Referer 檢查或簽發短效 token（但本就打算公開，優先級低）。
+
+## 里程碑
+
+1. [x] **M1 資料管線**：pipeline 產出完整 `out/hosted/<版本>/`（sheets WebP +
+       catalog JSON + rects + strings），本機驗證體積與正確性
+2. [x] **M2 前端 hosted 模式**：`api.hosted.ts` 跑通節點瀏覽 + 圖片預覽
+       （本機起靜態伺服器指向 `out/hosted` 即可開發，不必先上 R2）
+3. [ ] **M3 功能資料**：tooltip、怪物圖鑑、技能書、商城、紙娃娃接上 hosted 資料
+4. [ ] **M4 部署**：R2 bucket + Workers API + Service Worker 快取上線
+5. [ ] **M5 音效**：測量、轉檔、接上
+6. [ ] **M6 更新流程**：遊戲更新 → 一鍵重跑 pipeline + 差異上傳腳本
+
+## M1 實測結果（2026-08-04）
+
+工具：`src-tauri/examples/hosted_export.rs`（預設 example，納入日常
+fmt/clippy/test；catalog 快取放 `out/hosted/.catalog-cache/`，重跑秒開）。
+
+```powershell
+cargo run -p msclassic --release --example hosted_export -- `
+  "C:\Program Files\Gamania\maplestory_classic\Maplestory_Classic_Data\StreamingAssets\aa\w" `
+  out/hosted --version v20260804
+bash scripts/hosted_to_webp.sh out/hosted/v20260804   # PNG → lossless WebP（需 cwebp）
+```
+
+全量跑 **81 秒**（不含 WebP 轉檔，平行轉檔約 9 分鐘），產出 `out/hosted/v20260804/`：
+
+| 類別 | 檔案數 | 大小 | 備註 |
+|---|---|---|---|
+| `sheets/`（WebP） | 11,535 | **750 MB** | PNG 2.2GB → WebP，壓到 34%，優於抽樣估的 45% |
+| `textures/`（WebP） | 3,191 | 30 MB | spriteset / atlas 等非 sheet Texture2D |
+| `tree/`（JSON） | 11,955 | 658 MB | 每 img 一檔，canvas rect/origin 已內嵌；按需抓取，HTTP 壓縮後約再小一個量級 |
+| `strings/`（JSON） | 70 | 5.9 MB | |
+| `catalog.json` | 1 | 408 KB | 精簡版（路徑 → class_id） |
+| **合計** | **26,752** | **約 1.5 GB** | R2 免費 10GB 內綽綽有餘 |
+
+正確性：
+
+- canvas 節點 744,172 個中 **743,691（99.94%）** 成功解析 rect，與桌面版覆蓋率一致
+- 抽查 sheet WebP 解碼後畫面正確；`sheets/Character/Coat/01040147_0` 與舊
+  `dump_sprites` 產物一致
+- 唯一失敗：`Item/Consume/0261` WZJS 解碼報「slot5 應為空但 count = 10」——
+  這是解析器本身的邊界 case（桌面版同樣開不了這個 img），不是 pipeline 問題，
+  之後可獨立修
+- 31 個 sheet key（`Item/Pet/5000xxx`）沒有對應 WZJS img，atlas 頁仍照常匯出，
+  只是沒有 tree 可查
+
+## M2 實測結果（2026-08-04）
+
+- `npm run dev:hosted` 一鍵啟動（`scripts/dev_hosted.mjs` = 資料伺服器
+  `scripts/serve_hosted.mjs`（port 8788，CORS `*`）+ vite（port 1422））；
+  `npm run build:hosted` 建到 `dist-hosted/`。資料根與版本由
+  `VITE_HOSTED_DATA_BASE` / `VITE_HOSTED_DATA_VERSION` 環境變數覆寫
+  （預設 `http://localhost:8788` / `v20260804`）。
+- 驗證全過：`npm run build`（桌面）、`npm run build:hosted`、curl 靜態端點
+  （MIME/CORS/404/防穿越）、node 端對端（openDataDir→listChildren→getNode→
+  searchNodes→UOL 解析）。
+- 瀏覽器實機驗證：URL hash 直接導航 `#/Character/00002000/walk1/0/body` 與
+  `#/Character/00002000/stabTF/0/body`（UOL），切圖方向與位置正確。
+- 目前行為：資產樹瀏覽 / 搜尋 / 圖片預覽 / TextAsset 檢視完整可用；
+  怪物圖鑑、技能、紙娃娃、商城顯示「hosted 模式尚未支援…（M3）」；
+  匯出與音效同樣提示尚未支援。
+- M2 刻意取捨：searchNodes 只搜 catalog 路徑與「已載入過」的 tree 節點
+  （不主動抓新 tree，避免爆量下載）；字串名稱搜尋待 M3 隨功能資料一起補。

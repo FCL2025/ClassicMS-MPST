@@ -6,6 +6,7 @@
 /node_modules/
 /dist/
 /dist-web/
+/dist-hosted/
 
 # Generated analysis and local caches
 /web-wasm/pkg/

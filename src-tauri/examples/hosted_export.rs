@@ -1,0 +1,685 @@
+//! 雲端託管資料離線 pipeline（docs/HOSTED_DATA.md）。
+//!
+//! 輸入遊戲 bundle 目錄，產出託管用衍生資料集到 `<out_dir>/<version>/`：
+//! `index.json` / `catalog.json` / `tree/**` / `strings/**` / `sheets/**` / `textures/**`。
+//!
+//! 用法：
+//! ```text
+//! cargo run -p msclassic --release --example hosted_export -- \
+//!     <bundle 目錄> <輸出目錄> [--version vYYYYMMDD] [--limit-imgs N] [--limit-sheets N] \
+//!     [--skip-trees] [--skip-strings] [--skip-sheets] [--skip-textures]
+//! ```
+
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
+
+use msclassic::catalog::{DataService, EntryLocation};
+use msclassic::image::{parse_wzss, WzssIndex};
+use msclassic::unity::bundle::Bundle;
+use msclassic::unity::objects;
+use msclassic::unity::serialized_file::{metadata_len, SerializedFile, HEADER_SIZE};
+use msclassic::unity::texture;
+use msclassic::wzjs::node::is_canvas_tag;
+use msclassic::wzjs::{Value, WzNode};
+
+struct Args {
+    bundle_dir: PathBuf,
+    out_dir: PathBuf,
+    version: String,
+    generated_at: String,
+    limit_imgs: Option<usize>,
+    limit_sheets: Option<usize>,
+    skip_trees: bool,
+    skip_strings: bool,
+    skip_sheets: bool,
+    skip_textures: bool,
+}
+
+#[derive(Default)]
+struct Stats {
+    imgs: usize,
+    trees: usize,
+    tree_fail: usize,
+    strings: usize,
+    string_fail: usize,
+    sheets: usize,
+    sheet_fail: usize,
+    textures: usize,
+    texture_fail: usize,
+    canvas_total: usize,
+    canvas_resolved: usize,
+    bytes_catalog: u64,
+    bytes_tree: u64,
+    bytes_strings: u64,
+    bytes_sheets: u64,
+    bytes_textures: u64,
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args = parse_args()?;
+    let t0 = std::time::Instant::now();
+
+    let out_root = args.out_dir.join(&args.version);
+    let cache_dir = args.out_dir.join(".catalog-cache");
+    std::fs::create_dir_all(&cache_dir)?;
+    let (svc, info) = DataService::open(&args.bundle_dir, &cache_dir.join("catalog.json"))?;
+    println!(
+        "開啟: from_cache={} 耗時={}ms entries={} bundles={} sheets={}",
+        info.from_cache,
+        info.elapsed_ms,
+        info.entry_count,
+        info.bundle_count,
+        svc.catalog.image.sheets.len()
+    );
+
+    // 驗證「img 邏輯路徑 == sheet key」的對應關係。
+    let missing = svc
+        .catalog
+        .image
+        .sheets
+        .keys()
+        .filter(|key| !svc.catalog.entries.contains_key(*key))
+        .take(5)
+        .cloned()
+        .collect::<Vec<_>>();
+    if !missing.is_empty() {
+        println!("!! 有 sheet key 不在 catalog.entries，樣本: {missing:?}");
+    }
+
+    let mut stats = Stats::default();
+
+    // ── catalog.json：精簡索引 ──
+    std::fs::create_dir_all(&out_root)?;
+    let entries: serde_json::Map<String, serde_json::Value> = svc
+        .catalog
+        .entries
+        .iter()
+        .map(|(path, loc)| (path.clone(), serde_json::json!(loc.class_id)))
+        .collect();
+    let catalog_json = serde_json::to_vec(&serde_json::json!({ "entries": entries }))?;
+    stats.bytes_catalog = catalog_json.len() as u64;
+    std::fs::write(out_root.join("catalog.json"), &catalog_json)?;
+    println!("catalog.json: {} entries", svc.catalog.entries.len());
+
+    if !args.skip_trees {
+        export_trees(&svc, &out_root, args.limit_imgs, &mut stats)?;
+    }
+    if !args.skip_strings {
+        export_strings(&svc, &out_root, &mut stats)?;
+    }
+    if !args.skip_sheets {
+        export_sheets(&svc, &out_root, args.limit_sheets, &mut stats)?;
+    }
+    if !args.skip_textures {
+        export_textures(&svc, &out_root, &mut stats)?;
+    }
+
+    // ── index.json ──
+    let index = serde_json::json!({
+        "version": args.version,
+        "generated_at": args.generated_at,
+        "counts": {
+            "imgs": stats.imgs,
+            "trees": stats.trees,
+            "strings": stats.strings,
+            "sheets": stats.sheets,
+            "textures": stats.textures,
+            "canvas_total": stats.canvas_total,
+            "canvas_resolved": stats.canvas_resolved,
+        },
+        "bytes": {
+            "catalog": stats.bytes_catalog,
+            "tree": stats.bytes_tree,
+            "strings": stats.bytes_strings,
+            "sheets": stats.bytes_sheets,
+            "textures": stats.bytes_textures,
+        },
+    });
+    std::fs::write(
+        out_root.join("index.json"),
+        serde_json::to_vec_pretty(&index)?,
+    )?;
+
+    println!(
+        "\n=== 完成（{:.2?}）：imgs={} trees={}（fail {}） strings={}（fail {}） sheets={}（fail {}） textures={}（fail {}）",
+        t0.elapsed(),
+        stats.imgs,
+        stats.trees,
+        stats.tree_fail,
+        stats.strings,
+        stats.string_fail,
+        stats.sheets,
+        stats.sheet_fail,
+        stats.textures,
+        stats.texture_fail
+    );
+    println!(
+        "canvas: total={} resolved={}（{:.2}%）",
+        stats.canvas_total,
+        stats.canvas_resolved,
+        stats.canvas_resolved as f64 / stats.canvas_total.max(1) as f64 * 100.0
+    );
+    Ok(())
+}
+
+// ── tree/ ────────────────────────────────────────────────────
+
+fn export_trees(
+    svc: &DataService,
+    out_root: &Path,
+    limit: Option<usize>,
+    stats: &mut Stats,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let tree_dir = out_root.join("tree");
+    let imgs: Vec<&String> = svc
+        .catalog
+        .entries
+        .iter()
+        .filter(|(_, loc)| loc.class_id == objects::CLASS_MONO_BEHAVIOUR)
+        .map(|(path, _)| path)
+        .collect();
+    stats.imgs = imgs.len();
+    let imgs = match limit {
+        Some(n) => &imgs[..n.min(imgs.len())],
+        None => &imgs[..],
+    };
+    println!("tree: 處理 {} / {} 個 img", imgs.len(), stats.imgs);
+
+    for (i, img_key) in imgs.iter().enumerate() {
+        if i > 0 && i % 500 == 0 {
+            println!(
+                "[tree] {i}/{}（累計 ok={} fail={} canvas {}/{}）",
+                imgs.len(),
+                stats.trees,
+                stats.tree_fail,
+                stats.canvas_resolved,
+                stats.canvas_total
+            );
+        }
+        let result = export_one_tree(svc, img_key, &tree_dir, stats);
+        match result {
+            Ok(bytes) => {
+                stats.trees += 1;
+                stats.bytes_tree += bytes;
+            }
+            Err(e) => {
+                if stats.tree_fail < 10 {
+                    println!("!! [tree] {img_key}: {e}");
+                }
+                stats.tree_fail += 1;
+            }
+        }
+    }
+    println!(
+        "[tree] 完成：ok={} fail={}，canvas {}/{}",
+        stats.trees, stats.tree_fail, stats.canvas_resolved, stats.canvas_total
+    );
+    Ok(())
+}
+
+fn export_one_tree(
+    svc: &DataService,
+    img_key: &str,
+    tree_dir: &Path,
+    stats: &mut Stats,
+) -> Result<u64, Box<dyn std::error::Error>> {
+    let tree = svc.tree_for(img_key)?;
+
+    // 同一 img 的 spritesheet（key == img 邏輯路徑）；有才解析 WZSS。
+    let wzss = match svc.catalog.image.sheets.get(img_key) {
+        Some(sheet) => match &sheet.index_loc {
+            Some(index_loc) => {
+                let payload = svc.read_entry(index_loc)?;
+                let mono = objects::parse_mono_behaviour(&payload, true)?;
+                Some(parse_wzss(
+                    payload
+                        .get(mono.header_len..)
+                        .ok_or("WZSS MonoBehaviour header 越界")?,
+                )?)
+            }
+            None => None,
+        },
+        None => None,
+    };
+
+    let root = node_to_json(&tree, "", img_key, wzss.as_ref(), stats);
+    let json = serde_json::to_vec(&root)?;
+    let out_path = tree_dir.join(safe_rel_path(img_key)).with_extension("json");
+    if let Some(parent) = out_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let len = json.len() as u64;
+    std::fs::write(out_path, json)?;
+    Ok(len)
+}
+
+/// WzNode → 託管用 tree JSON（自訂形狀，不動 WzNode 本身的 Serialize）。
+/// `inner` 是 img 內相對路徑（根為 ""），用來查 WZSS 節點鍵。
+fn node_to_json(
+    node: &WzNode,
+    inner: &str,
+    sheet_key: &str,
+    wzss: Option<&WzssIndex>,
+    stats: &mut Stats,
+) -> serde_json::Value {
+    let mut obj = serde_json::json!({
+        "name": node.name,
+        "tag": node.type_tag,
+        "value": serde_json::to_value(&node.value).unwrap_or(serde_json::Value::Null),
+    });
+    let map = obj.as_object_mut().expect("剛建的 JSON 物件");
+
+    if is_canvas_tag(node.type_tag) {
+        stats.canvas_total += 1;
+        let sprite = wzss
+            .and_then(|w| w.frame_index_for_node(inner))
+            .and_then(|frame| wzss.and_then(|w| w.sprite_for_frame(frame)));
+        if let Some(sprite) = sprite {
+            stats.canvas_resolved += 1;
+            let (ox, oy) = canvas_origin(node);
+            map.insert(
+                "canvas".to_string(),
+                serde_json::json!({
+                    "sheet": sheet_key,
+                    "page": sprite.page,
+                    "x": sprite.rect.x,
+                    "y": sprite.rect.y,
+                    "w": sprite.rect.w,
+                    "h": sprite.rect.h,
+                    "ox": ox,
+                    "oy": oy,
+                }),
+            );
+        } else {
+            map.insert("canvas".to_string(), serde_json::Value::Null);
+        }
+    }
+
+    if !node.children.is_empty() {
+        let children: Vec<serde_json::Value> = node
+            .children
+            .iter()
+            .map(|child| {
+                let child_inner = if inner.is_empty() {
+                    child.name.clone()
+                } else {
+                    format!("{inner}/{}", child.name)
+                };
+                node_to_json(child, &child_inner, sheet_key, wzss, stats)
+            })
+            .collect();
+        map.insert("children".to_string(), serde_json::Value::Array(children));
+    }
+    obj
+}
+
+/// canvas 的 origin 子節點（`Value::Vector`），無則 (0, 0)。
+fn canvas_origin(node: &WzNode) -> (f32, f32) {
+    match node.children.iter().find(|c| c.name == "origin") {
+        Some(WzNode {
+            value: Value::Vector(x, y),
+            ..
+        }) => (*x, *y),
+        _ => (0.0, 0.0),
+    }
+}
+
+// ── strings/ ─────────────────────────────────────────────────
+
+fn export_strings(
+    svc: &DataService,
+    out_root: &Path,
+    stats: &mut Stats,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let strings_dir = out_root.join("strings");
+    for (path, loc) in &svc.catalog.entries {
+        if loc.class_id != objects::CLASS_TEXT_ASSET {
+            continue;
+        }
+        match svc.get_node(path) {
+            Ok(detail) => {
+                let Some(text) = detail.text_asset else {
+                    stats.string_fail += 1;
+                    continue;
+                };
+                let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
+                let out_path = strings_dir.join(safe_rel_path(path)).with_extension("json");
+                if let Some(parent) = out_path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::write(&out_path, text)?;
+                stats.strings += 1;
+                stats.bytes_strings += text.len() as u64;
+            }
+            Err(e) => {
+                if stats.string_fail < 10 {
+                    println!("!! [strings] {path}: {e}");
+                }
+                stats.string_fail += 1;
+            }
+        }
+    }
+    println!(
+        "[strings] 完成：ok={} fail={}",
+        stats.strings, stats.string_fail
+    );
+    Ok(())
+}
+
+// ── sheets/ ──────────────────────────────────────────────────
+
+/// 按 bundle_index 快取 Bundle 控制代碼（DataService 的是 pub(crate)，自己開）。
+struct BundleCache<'a> {
+    svc: &'a DataService,
+    handles: HashMap<u32, Bundle>,
+}
+
+impl<'a> BundleCache<'a> {
+    fn new(svc: &'a DataService) -> Self {
+        Self {
+            svc,
+            handles: HashMap::new(),
+        }
+    }
+
+    fn get(&mut self, bundle_index: u32) -> Result<&Bundle, Box<dyn std::error::Error>> {
+        Ok(self.handles.entry(bundle_index).or_insert_with_key(|i| {
+            let meta = &self.svc.catalog.bundles[*i as usize];
+            Bundle::open(&self.svc.catalog.root.join(format!("{}.bundle", meta.name)))
+                .expect("開啟 bundle 失敗")
+        }))
+    }
+}
+
+fn export_sheets(
+    svc: &DataService,
+    out_root: &Path,
+    limit: Option<usize>,
+    stats: &mut Stats,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let sheets_dir = out_root.join("sheets");
+    let total_pages: usize = svc
+        .catalog
+        .image
+        .sheets
+        .values()
+        .map(|s| s.atlas_pages.len())
+        .sum();
+    println!("[sheets] 共 {} 頁（limit={limit:?}）", total_pages);
+    let mut bundles = BundleCache::new(svc);
+
+    'outer: for (key, sheet) in &svc.catalog.image.sheets {
+        for (page, loc) in &sheet.atlas_pages {
+            if limit.is_some_and(|n| stats.sheets + stats.sheet_fail >= n) {
+                break 'outer;
+            }
+            match export_texture_png(svc, &mut bundles, loc) {
+                Ok((png, _name)) => {
+                    let out_path = sheets_dir.join(safe_rel_path(key)).with_file_name(format!(
+                        "{}_{}.png",
+                        sanitize_segment(key.rsplit('/').next().expect("split 至少一段")),
+                        page
+                    ));
+                    if let Some(parent) = out_path.parent() {
+                        std::fs::create_dir_all(parent)?;
+                    }
+                    stats.bytes_sheets += png.len() as u64;
+                    std::fs::write(&out_path, png)?;
+                    stats.sheets += 1;
+                }
+                Err(e) => {
+                    if stats.sheet_fail < 10 {
+                        println!("!! [sheets] {key}_{page}: {e}");
+                    }
+                    stats.sheet_fail += 1;
+                }
+            }
+            if (stats.sheets + stats.sheet_fail).is_multiple_of(500) {
+                println!(
+                    "[sheets] 累計 ok={} fail={}",
+                    stats.sheets, stats.sheet_fail
+                );
+            }
+        }
+    }
+    println!(
+        "[sheets] 完成：ok={} fail={}",
+        stats.sheets, stats.sheet_fail
+    );
+    Ok(())
+}
+
+/// EntryLocation（Texture2D）→ PNG bytes（已翻正）。
+fn export_texture_png(
+    svc: &DataService,
+    bundles: &mut BundleCache<'_>,
+    loc: &EntryLocation,
+) -> Result<(Vec<u8>, String), Box<dyn std::error::Error>> {
+    let data = svc.read_entry(loc)?;
+    let tex = objects::parse_texture2d(&data, true)?;
+    let bundle = bundles.get(loc.bundle_index)?;
+    let mut rgba = texture::fetch_pixels(bundle, loc.node_index as usize, &tex, &data)?;
+    let width = tex.width as u32;
+    let height = tex.height as u32;
+    texture::flip_vertical(&mut rgba, width, height)?;
+    let png = texture::to_png(width, height, &rgba)?;
+    Ok((png, tex.name))
+}
+
+// ── textures/（不屬於任何 sheet atlas 頁的 Texture2D）────────
+
+fn export_textures(
+    svc: &DataService,
+    out_root: &Path,
+    stats: &mut Stats,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // sheet atlas 頁的位置集合：掃到就跳過（以 sheets/ 命名為準，不重複寫）。
+    let sheet_pages: HashSet<(u32, u32, u64)> = svc
+        .catalog
+        .image
+        .sheets
+        .values()
+        .flat_map(|s| s.atlas_pages.iter())
+        .map(|(_, loc)| (loc.bundle_index, loc.node_index, loc.abs_offset))
+        .collect();
+
+    let tex_dir = out_root.join("textures");
+    let mut bundles = BundleCache::new(svc);
+    let mut done = 0usize;
+    for (bundle_index, meta) in svc.catalog.bundles.iter().enumerate() {
+        let stem = &meta.name;
+        if !(stem.starts_with("spriteset_")
+            || stem.starts_with("spritesheet_")
+            || stem.starts_with("atlas_"))
+        {
+            continue;
+        }
+        let bundle = bundles.get(bundle_index as u32)?;
+        for ni in 0..bundle.nodes.len() {
+            if !bundle.nodes[ni].is_serialized_file() {
+                continue;
+            }
+            let head48 = bundle.read_node_range(ni, 0, HEADER_SIZE)?;
+            let meta_len = metadata_len(&head48)?;
+            let head = bundle.read_node_range(ni, 0, meta_len)?;
+            let sf = SerializedFile::parse(&head)?;
+            for o in sf.objects_by_class(objects::CLASS_TEXTURE2D) {
+                let abs_offset = sf.data_offset + o.byte_start as u64;
+                if sheet_pages.contains(&(bundle_index as u32, ni as u32, abs_offset)) {
+                    continue;
+                }
+                let result = (|| -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+                    let data = bundle.read_node_range(ni, abs_offset, o.byte_size as usize)?;
+                    let tex = objects::parse_texture2d(&data, &sf)?;
+                    let mut rgba = texture::fetch_pixels(bundle, ni, &tex, &data)?;
+                    let (w, h) = (tex.width as u32, tex.height as u32);
+                    texture::flip_vertical(&mut rgba, w, h)?;
+                    let png = texture::to_png(w, h, &rgba)?;
+                    let out_path = tex_dir.join(sanitize_segment(stem)).join(format!(
+                        "{}_{}.png",
+                        sanitize_file_name(&tex.name),
+                        o.path_id
+                    ));
+                    if let Some(parent) = out_path.parent() {
+                        std::fs::create_dir_all(parent)?;
+                    }
+                    std::fs::write(&out_path, &png)?;
+                    Ok(png)
+                })();
+                match result {
+                    Ok(png) => {
+                        stats.textures += 1;
+                        stats.bytes_textures += png.len() as u64;
+                    }
+                    Err(e) => {
+                        if stats.texture_fail < 10 {
+                            println!("!! [textures] [{stem}] pid {}: {e}", o.path_id);
+                        }
+                        stats.texture_fail += 1;
+                    }
+                }
+                done += 1;
+                if done.is_multiple_of(1000) {
+                    println!(
+                        "[textures] 掃描 {done}（累計 ok={} fail={}）",
+                        stats.textures, stats.texture_fail
+                    );
+                }
+            }
+        }
+        println!(
+            "[textures] [{stem}] 完成（累計 ok={} fail={}）",
+            stats.textures, stats.texture_fail
+        );
+    }
+    Ok(())
+}
+
+// ── CLI / 工具 ───────────────────────────────────────────────
+
+fn parse_args() -> Result<Args, Box<dyn std::error::Error>> {
+    let mut positional = Vec::new();
+    let mut version = None;
+    let mut limit_imgs = None;
+    let mut limit_sheets = None;
+    let mut skip_trees = false;
+    let mut skip_strings = false;
+    let mut skip_sheets = false;
+    let mut skip_textures = false;
+
+    let mut it = std::env::args().skip(1);
+    while let Some(arg) = it.next() {
+        match arg.as_str() {
+            "--version" => version = Some(it.next().ok_or("--version 需要一個值")?),
+            "--limit-imgs" => {
+                limit_imgs = Some(it.next().ok_or("--limit-imgs 需要一個值")?.parse()?)
+            }
+            "--limit-sheets" => {
+                limit_sheets = Some(it.next().ok_or("--limit-sheets 需要一個值")?.parse()?)
+            }
+            "--skip-trees" => skip_trees = true,
+            "--skip-strings" => skip_strings = true,
+            "--skip-sheets" => skip_sheets = true,
+            "--skip-textures" => skip_textures = true,
+            other if other.starts_with("--") => return Err(format!("未知參數: {other}").into()),
+            _ => positional.push(arg),
+        }
+    }
+    if positional.len() != 2 {
+        return Err("用法: hosted_export <bundle_dir> <out_dir> [--version V] [--limit-imgs N] [--limit-sheets N] [--skip-trees] [--skip-strings] [--skip-sheets] [--skip-textures]".into());
+    }
+    let (year, month, day) = today();
+    Ok(Args {
+        bundle_dir: PathBuf::from(&positional[0]),
+        out_dir: PathBuf::from(&positional[1]),
+        version: version.unwrap_or_else(|| format!("v{year:04}{month:02}{day:02}")),
+        generated_at: format!("{year:04}-{month:02}-{day:02}"),
+        limit_imgs,
+        limit_sheets,
+        skip_trees,
+        skip_strings,
+        skip_sheets,
+        skip_textures,
+    })
+}
+
+/// 當天日期（UTC；pipeline 用，精度夠了）。
+fn today() -> (i64, u32, u32) {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    civil_from_days((secs / 86_400) as i64)
+}
+
+/// days since 1970-01-01 → (year, month, day)（Howard Hinnant 演算法）。
+fn civil_from_days(z: i64) -> (i64, u32, u32) {
+    let z = z + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let year = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    (if month <= 2 { year + 1 } else { year }, month, day)
+}
+
+/// 邏輯路徑 → 安全的相對路徑（逐段消毒，防 `..`、絕對路徑與 Windows 保留字）。
+fn safe_rel_path(logical: &str) -> PathBuf {
+    let mut out = PathBuf::new();
+    for seg in logical.split(['/', '\\']) {
+        out.push(sanitize_segment(seg));
+    }
+    out
+}
+
+fn sanitize_segment(seg: &str) -> String {
+    let cleaned = sanitize_file_name(seg);
+    if cleaned.is_empty() || cleaned == "." || cleaned == ".." {
+        return "_".to_string();
+    }
+    let stem = cleaned.split('.').next().unwrap_or("");
+    if matches!(
+        stem.to_ascii_uppercase().as_str(),
+        "CON"
+            | "PRN"
+            | "AUX"
+            | "NUL"
+            | "COM1"
+            | "COM2"
+            | "COM3"
+            | "COM4"
+            | "COM5"
+            | "COM6"
+            | "COM7"
+            | "COM8"
+            | "COM9"
+            | "LPT1"
+            | "LPT2"
+            | "LPT3"
+            | "LPT4"
+            | "LPT5"
+            | "LPT6"
+            | "LPT7"
+            | "LPT8"
+            | "LPT9"
+    ) {
+        return format!("_{cleaned}");
+    }
+    cleaned
+}
+
+/// 檔名消毒：`<>:"/\|?*` 與控制字元換成 `_`。
+fn sanitize_file_name(name: &str) -> String {
+    name.chars()
+        .map(|c| {
+            if "<>:\"/\\|?*".contains(c) || c.is_control() {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect()
+}
