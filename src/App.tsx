@@ -9,6 +9,7 @@ import {
 } from "react";
 import {
   getAudio,
+  getDataSource,
   initialDataDir,
   initialPath,
   initialView,
@@ -17,9 +18,12 @@ import {
   openDataDir,
   pickDataDirectory,
   reconnectDataDirectory,
+  setDataSource,
   storedFolderLabel,
+  supportsDataSourceSwitch,
   typeLabel,
   type ChildEntry,
+  type DataSource,
   type ImportProgress,
   type OpenInfo,
   type OpenResult,
@@ -37,6 +41,11 @@ import { version as APP_VERSION } from "../package.json";
 
 const MIN_TREE_WIDTH = 240;
 const DEFAULT_TREE_WIDTH = 380;
+
+// 資料來源切換（hosted 版限定）：true 時 header 顯示「雲端資料 / 本機資料夾」切換器。
+const CAN_SWITCH_DATA_SOURCE = supportsDataSourceSwitch();
+// 切到雲端時 loadDataDirectory 的 path 參數僅用於狀態列訊息（hosted openDataDir 會忽略）。
+const CLOUD_SOURCE_LABEL = "雲端資料";
 
 function initialTreeWidth(): number {
   const saved = Number(window.localStorage.getItem("msclassic.treePaneWidth"));
@@ -83,6 +92,8 @@ export default function App() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<ChildEntry | null>(null);
   const [openInfo, setOpenInfo] = useState<OpenInfo | null>(null);
+  // 資料來源（hosted 版才有切換器；偏好存 localStorage，預設雲端）。
+  const [dataSource, setDataSourceState] = useState<DataSource>(() => getDataSource());
   const [, setDataDir] = useState<string | null>(null);
   const [dataError, setDataError] = useState<string | null>(null);
   const [loadingData, setLoadingData] = useState(false);
@@ -216,6 +227,36 @@ export default function App() {
       setStatus(`重新連線失敗：${message}`);
     }
   }, [loadDataDirectory]);
+
+  // 來源切換器（hosted 版）：切到雲端 = 重新載入託管資料集。
+  const switchToCloud = useCallback(async () => {
+    if (dataSource === "cloud" || loadingData) return;
+    setDataSource("cloud");
+    setDataSourceState("cloud");
+    await loadDataDirectory(CLOUD_SOURCE_LABEL);
+  }, [dataSource, loadingData, loadDataDirectory]);
+
+  // 來源切換器（hosted 版）：切到本機 = 有記住的資料夾則重連，否則跳選擇器；
+  // 使用者取消選擇時回復雲端模式，避免切過去卻沒資料的空狀態。
+  const switchToLocal = useCallback(async () => {
+    if (dataSource === "local" || loadingData) return;
+    // 先切模式，api 委派層才會把 reconnect/pick 打到本機後端。
+    setDataSource("local");
+    try {
+      const label = (await reconnectDataDirectory()) ?? (await pickDataDirectory());
+      if (!label) {
+        setDataSource("cloud");
+        return;
+      }
+      setDataSourceState("local");
+      await loadDataDirectory(label);
+    } catch (error) {
+      setDataSource("cloud");
+      const message = String(error);
+      setDataError(message);
+      setStatus(`切換本機資料夾失敗：${message}`);
+    }
+  }, [dataSource, loadingData, loadDataDirectory]);
 
   const childrenOf = useCallback((path: string) => childrenMap.get(path), [childrenMap]);
 
@@ -491,15 +532,57 @@ export default function App() {
             </label>
           </>
         ) : null}
-        <button
-          className="data-folder-button"
-          type="button"
-          disabled={loadingData}
-          onClick={() => void chooseDataDirectory()}
-        >
-          <span aria-hidden="true">▣</span>
-          {loadingData ? "載入中…" : openInfo ? "更換資料夾" : "選擇資料夾"}
-        </button>
+        {CAN_SWITCH_DATA_SOURCE ? (
+          <>
+            <div className="source-switch" role="tablist" aria-label="資料來源">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={dataSource === "cloud"}
+                className={dataSource === "cloud" ? "is-active" : ""}
+                disabled={loadingData}
+                title="Cloudflare 託管的預處理資料，免安裝遊戲"
+                onClick={() => void switchToCloud()}
+              >
+                <span aria-hidden="true">☁</span>
+                雲端資料
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={dataSource === "local"}
+                className={dataSource === "local" ? "is-active" : ""}
+                disabled={loadingData}
+                title="讀取自己電腦裡的遊戲資料夾"
+                onClick={() => void switchToLocal()}
+              >
+                <span aria-hidden="true">▣</span>
+                本機資料夾
+              </button>
+            </div>
+            {dataSource === "local" ? (
+              <button
+                className="data-folder-button"
+                type="button"
+                disabled={loadingData}
+                onClick={() => void chooseDataDirectory()}
+              >
+                <span aria-hidden="true">▣</span>
+                {loadingData ? "載入中…" : openInfo ? "更換資料夾" : "選擇資料夾"}
+              </button>
+            ) : null}
+          </>
+        ) : (
+          <button
+            className="data-folder-button"
+            type="button"
+            disabled={loadingData}
+            onClick={() => void chooseDataDirectory()}
+          >
+            <span aria-hidden="true">▣</span>
+            {loadingData ? "載入中…" : openInfo ? "更換資料夾" : "選擇資料夾"}
+          </button>
+        )}
         <button
           className="icon-button"
           type="button"
@@ -599,44 +682,66 @@ export default function App() {
       ) : (
         <main className="data-source-welcome">
           <section>
-            <p className="welcome-eyebrow">開始使用</p>
-            <h1>選擇遊戲資料夾</h1>
-            <p className="welcome-description">
-              請選擇楓之谷經典版的安裝目錄、Maplestory_Classic_Data，
-              或直接選擇包含 bundle 的 StreamingAssets\aa\w。
-            </p>
-            <button
-              className="welcome-open-button"
-              type="button"
-              disabled={loadingData}
-              onClick={() => void chooseDataDirectory()}
-            >
-              {loadingData ? "正在建立資產索引…" : "選擇資料夾"}
-            </button>
-            {reconnectLabel ? (
-              <button
-                className="welcome-reconnect-button"
-                type="button"
-                disabled={loadingData}
-                onClick={() => void reconnectStoredFolder()}
-              >
-                重新連線上次資料夾：{reconnectLabel}
-              </button>
-            ) : null}
-            {dataError ? <p className="data-source-error" role="alert">{dataError}</p> : null}
-            <p className="welcome-hint">程式只會讀取遊戲資料，不會修改原始 bundle。</p>
-            {__WEB_BUILD__ ? (
-              <p className="welcome-hint">
-                瀏覽器的資料夾對話框若顯示「上傳」字樣屬正常現象（瀏覽器固定文案），
-                檔案僅在你的電腦本機讀取，不會上傳到任何伺服器。
-              </p>
-            ) : null}
-            {__WEB_BUILD__ ? (
-              <p className="welcome-hint">
-                Chrome／Edge 若提示「無法開啟此資料夾，因為其包含系統檔案」，直接取消該對話框，
-                再按一次「選擇資料夾」即會改用相容選擇器，同樣的位置即可正常選取。
-              </p>
-            ) : null}
+            {CAN_SWITCH_DATA_SOURCE && dataSource === "cloud" ? (
+              <>
+                <p className="welcome-eyebrow">開始使用</p>
+                <h1>連線雲端資料</h1>
+                <p className="welcome-description">
+                  正在連線 Cloudflare 託管的遊戲資料。若連線失敗，請確認網路後重試，
+                  或用右上角的來源切換器改讀本機資料夾。
+                </p>
+                <button
+                  className="welcome-open-button"
+                  type="button"
+                  disabled={loadingData}
+                  onClick={() => void loadDataDirectory(CLOUD_SOURCE_LABEL)}
+                >
+                  {loadingData ? "正在連線雲端資料…" : "重試連線雲端資料"}
+                </button>
+                {dataError ? <p className="data-source-error" role="alert">{dataError}</p> : null}
+              </>
+            ) : (
+              <>
+                <p className="welcome-eyebrow">開始使用</p>
+                <h1>選擇遊戲資料夾</h1>
+                <p className="welcome-description">
+                  請選擇楓之谷經典版的安裝目錄、Maplestory_Classic_Data，
+                  或直接選擇包含 bundle 的 StreamingAssets\aa\w。
+                </p>
+                <button
+                  className="welcome-open-button"
+                  type="button"
+                  disabled={loadingData}
+                  onClick={() => void chooseDataDirectory()}
+                >
+                  {loadingData ? "正在建立資產索引…" : "選擇資料夾"}
+                </button>
+                {reconnectLabel ? (
+                  <button
+                    className="welcome-reconnect-button"
+                    type="button"
+                    disabled={loadingData}
+                    onClick={() => void reconnectStoredFolder()}
+                  >
+                    重新連線上次資料夾：{reconnectLabel}
+                  </button>
+                ) : null}
+                {dataError ? <p className="data-source-error" role="alert">{dataError}</p> : null}
+                <p className="welcome-hint">程式只會讀取遊戲資料，不會修改原始 bundle。</p>
+                {__WEB_BUILD__ ? (
+                  <p className="welcome-hint">
+                    瀏覽器的資料夾對話框若顯示「上傳」字樣屬正常現象（瀏覽器固定文案），
+                    檔案僅在你的電腦本機讀取，不會上傳到任何伺服器。
+                  </p>
+                ) : null}
+                {__WEB_BUILD__ ? (
+                  <p className="welcome-hint">
+                    Chrome／Edge 若提示「無法開啟此資料夾，因為其包含系統檔案」，直接取消該對話框，
+                    再按一次「選擇資料夾」即會改用相容選擇器，同樣的位置即可正常選取。
+                  </p>
+                ) : null}
+              </>
+            )}
           </section>
         </main>
       )}

@@ -297,6 +297,12 @@ export const initialDataDir = () => invoke<string | null>("initial_data_dir");
 export const storedFolderLabel = (): Promise<string | null> => Promise.resolve(null);
 export const reconnectDataDirectory = (): Promise<string | null> => Promise.resolve(null);
 
+// 資料來源切換(hosted 版 api.hosted.ts 才有雙來源);桌面版固定本機資料夾。
+export type DataSource = "cloud" | "local";
+export const getDataSource = (): DataSource => "local";
+export const setDataSource = (_source: DataSource): void => undefined;
+export const supportsDataSourceSwitch = (): boolean => false;
+
 /** 以系統預設瀏覽器開啟外部連結（桌面版走 opener plugin）。 */
 export const openExternal = (url: string) => openUrl(url);
 

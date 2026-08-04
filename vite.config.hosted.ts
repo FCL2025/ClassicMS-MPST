@@ -6,7 +6,7 @@ const hostedApi = fileURLToPath(new URL("./src/api.hosted.ts", import.meta.url))
 
 // Hosted（靜態資料集）版建置設定：與 vite.config.web.ts 同款，差異在
 // 1. alias：把 App/components 的 "./api" / "../api" 換成 src/api.hosted.ts
-//    （純 HTTP fetch 版，不需要 WASM worker）。
+//    （雙後端委派層：預設雲端 HTTP fetch，使用者可切換本機資料夾 WASM worker）。
 // 2. define：資料集根 URL 與版本，可用環境變數覆寫。預設值依 command 區分：
 //    dev 用 scripts/serve_hosted.mjs 的 http://localhost:8788；
 //    build 用同源 "/data"（部署後由 workers/hosted.js 從 R2 取出）。
@@ -47,6 +47,11 @@ export default defineConfig(({ command }) => ({
   optimizeDeps: {
     // 同桌面版：只吃根目錄 index.html，不要爬 dist/、target/ 下的 html。
     entries: ["index.html"],
+  },
+  worker: {
+    // 本機資料夾模式（api.web.ts）會打包 src/web/worker.ts + wasm glue，
+    // 與 vite.config.web.ts 相同需求：ES module 格式（wasm glue 需要 import.meta）。
+    format: "es",
   },
   build: {
     outDir: "dist-hosted",

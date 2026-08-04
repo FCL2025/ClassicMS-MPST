@@ -3619,3 +3619,51 @@ textarea:focus-visible,
   flex-wrap: wrap;
   gap: 5px;
 }
+
+/* 資料來源切換器（hosted 版 header）：雲端資料 / 本機資料夾 分段控制，
+   作用中段以 accent 底色標示，兼作「目前讀取來源」的可見指示。 */
+.source-switch {
+  display: inline-flex;
+  min-height: 32px;
+  flex: 0 0 auto;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--button-bg);
+  overflow: hidden;
+}
+
+.source-switch button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 0 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.source-switch button + button {
+  border-left: 1px solid var(--border);
+}
+
+.source-switch button:not(:disabled):not(.is-active):hover {
+  color: var(--text-strong);
+  background: var(--accent-soft);
+}
+
+.source-switch button.is-active {
+  background: var(--accent-soft);
+  color: var(--text-strong);
+}
+
+.source-switch button.is-active span {
+  color: var(--accent);
+}
+
+.source-switch button:disabled {
+  color: var(--disabled);
+}

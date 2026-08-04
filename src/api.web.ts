@@ -328,6 +328,12 @@ export const reconnectDataDirectory = async (): Promise<string | null> => {
   return picked.label;
 };
 
+// 資料來源切換(hosted 版 api.hosted.ts 才有雙來源);web 版固定本機資料夾。
+export type DataSource = "cloud" | "local";
+export const getDataSource = (): DataSource => "local";
+export const setDataSource = (_source: DataSource): void => undefined;
+export const supportsDataSourceSwitch = (): boolean => false;
+
 export const listChildren = (path: string) => rpc<ChildEntry[]>("listChildren", path);
 export const getNode = (path: string) => rpc<NodeDetail>("getNode", path);
 
