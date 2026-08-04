@@ -119,6 +119,10 @@ async function openCached(): Promise<unknown | null> {
 
 /** 把異動的 bundle 複製進 OPFS(逐檔分塊 + 進度回報),回傳排序後的 manifest。 */
 async function syncBundlesToOpfs(files: File[]): Promise<BundleMeta[]> {
+  // 同一檔案同時間只能有一個 sync handle:已開啟資料再重新匯入時,
+  // 這裡要覆寫的 bundle 仍被 bundleHandles 握著,必須先關掉才能
+  // createSyncAccessHandle / removeEntry。匯入成功後 openSyncHandles 會重開。
+  closeHandles();
   const sorted = [...files].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   const manifest: BundleMeta[] = sorted.map((f) => ({
     name: f.name,
