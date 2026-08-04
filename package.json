@@ -1,7 +1,7 @@
 {
   "name": "msclassic-viewer",
   "private": true,
-  "version": "0.18.1",
+  "version": "0.19.0",
   "description": "楓之谷經典版 Unity 資料瀏覽、圖片預覽與 JSON/PNG/XML 匯出工具",
   "type": "module",
   "scripts": {
@@ -22,7 +22,9 @@
     "clean:report": "powershell -ExecutionPolicy Bypass -File scripts/clean-target.ps1 -Mode report",
     "clean:sweep": "powershell -ExecutionPolicy Bypass -File scripts/clean-target.ps1 -Mode sweep",
     "clean:debug": "powershell -ExecutionPolicy Bypass -File scripts/clean-target.ps1 -Mode debug",
-    "clean:target": "powershell -ExecutionPolicy Bypass -File scripts/clean-target.ps1 -Mode all"
+    "clean:target": "powershell -ExecutionPolicy Bypass -File scripts/clean-target.ps1 -Mode all",
+    "deploy:hosted": "npm run build:hosted && npx wrangler deploy -c wrangler.hosted.jsonc",
+    "upload:hosted-data": "node scripts/upload_hosted.mjs"
   },
   "dependencies": {
     "@tanstack/react-virtual": "^3.13.0",
@@ -40,6 +42,7 @@
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^4.5.0",
     "typescript": "^5.8.0",
-    "vite": "^6.3.0"
+    "vite": "^6.3.0",
+    "wrangler": "^4.118.0"
   }
 }

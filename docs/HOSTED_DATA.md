@@ -98,7 +98,7 @@ R2 上傳用 `wrangler r2 object put` 或 rclone（萬級檔案建議 rclone 分
 - [x] 獨立 `vite.config.hosted.ts`（alias 切換 + define 注入
       `__HOSTED_DATA_BASE__` / `__HOSTED_DATA_VERSION__`），
       `npm run dev:hosted` 一鍵起資料伺服器 + vite，`npm run build:hosted` 建到 `dist-hosted/`
-- [ ] Service Worker：快取 R2 資源（Cache API，版本前綴即天然快取鍵）
+- [x] Service Worker：快取 R2 資源（Cache API，版本前綴即天然快取鍵）
 - [x] 首屏：進站直接載入 catalog + index 即開（`initialDataDir` 直接回標籤，
       免選資料夾）；熱門功能資料屬 M3
 - [ ] 列表預取：瀏覽某分類時背景預取該分類其餘 sheet
@@ -135,7 +135,8 @@ R2 上傳用 `wrangler r2 object put` 或 rclone（萬級檔案建議 rclone 分
 2. [x] **M2 前端 hosted 模式**：`api.hosted.ts` 跑通節點瀏覽 + 圖片預覽
        （本機起靜態伺服器指向 `out/hosted` 即可開發，不必先上 R2）
 3. [x] **M3 功能資料**：tooltip、怪物圖鑑、技能書、商城、紙娃娃接上 hosted 資料
-4. [ ] **M4 部署**：R2 bucket + Workers API + Service Worker 快取上線
+4. [x] **M4 部署**：R2 bucket + Workers API + Service Worker 快取上線
+       （鷹架與本機驗證完成；實際 deploy 待 Cloudflare 授權，見「M4 部署步驟」）
 5. [x] **M5 音效**：測量、轉檔、接上
 6. [ ] **M6 更新流程**：遊戲更新 → 一鍵重跑 pipeline + 差異上傳腳本
 
@@ -232,3 +233,32 @@ bash scripts/hosted_to_webp.sh out/hosted/v20260804   # PNG → lossless WebP（
 - 排障備忘：vite dev server 長時間 HMR 後曾出現 hash 導航失效的假性 bug，
   重啟 dev server 即恢復；CDP 測試同 origin 換 hash 不會重整頁面，
   測試 URL 要加 dummy query 強制 reload。
+
+## M4 部署步驟（2026-08-04 鷹架完成）
+
+產出：`workers/hosted.js`（/data/* → R2，含 .json→.json.gz 的 Content-Encoding 處理、
+immutable 快取標頭、CORS）、`wrangler.hosted.jsonc`（assets=dist-hosted +
+R2 binding DATA）、`public/sw-hosted.js`（/data/ cache-first，production 才註冊）、
+`scripts/upload_hosted.mjs`（wrangler r2 bulk put 分批上傳，manifest 格式
+`[{key, file}]`，每批 2,000 筆）、`scripts/serve_hosted.mjs` 支援 .json.gz fallback。
+vite.config.hosted.ts：build 時資料根預設同源 `/data`（dev 仍是 localhost:8788，
+`VITE_HOSTED_DATA_BASE` 可覆寫）。
+
+同次最佳化：pipeline 的 JSON 產物全部改 gzip（.json.gz）——tree/ 由 630MB 降到
+**37MB**（17x），JSON 類合計 637MB→40MB；並清掉與 webp 重複的 PNG。
+**資料集最終約 1.2GB**（webp 780MB + ogg 277MB + json.gz 40MB）。
+
+使用者操作（一次性）：
+
+1. `npx wrangler login`（瀏覽器授權 Cloudflare）
+2. `npx wrangler r2 bucket create msclassic-data`
+3. `npm run upload:hosted-data -- v20260804`（44k 檔、23 批，失敗自動重試一次）
+4. `npm run deploy:hosted`（部署到 `msclassic-hosted.<帳號子域>.workers.dev`）
+5. 網域：預設不綁；要綁 `classic.maplepstutorial.com` 或子網域時，在
+   `wrangler.hosted.jsonc` 加 routes（注意：現有 wrangler.jsonc 的本機資料夾
+   網頁版佔用同一網域，兩者擇一或分子網域）
+
+本機驗證已過：gzip 資料集端到端（tooltip、怪物明細、切圖）、serve_hosted 的
+.json→.json.gz fallback（curl --compressed 比對一致）、upload dry-run
+（44,252 筆 manifest）、`wrangler deploy --dry-run`（binding 正確）。
+Service Worker 僅 production 註冊，尚未有正式環境可驗。

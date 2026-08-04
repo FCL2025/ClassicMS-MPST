@@ -1,0 +1,19 @@
+// Hosted 模式（靜態站 + R2 資料集）的 Worker 設定。
+// 部署：npm run deploy:hosted；資料上傳：npm run upload:hosted-data -- <version>
+// 網域未設定（不設 routes/custom_domain），先用 workers.dev；要綁網域再自行加上。
+{
+  "name": "msclassic-hosted",
+  "main": "workers/hosted.js",
+  "compatibility_date": "2026-07-25",
+  "assets": {
+    "directory": "./dist-hosted",
+    "binding": "ASSETS"
+  },
+  "r2_buckets": [
+    {
+      "binding": "DATA",
+      "bucket_name": "msclassic-data"
+    }
+  ],
+  "workers_dev": true
+}

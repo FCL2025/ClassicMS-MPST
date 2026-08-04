@@ -1,8 +1,10 @@
 //! 雲端託管資料離線 pipeline（docs/HOSTED_DATA.md）。
 //!
 //! 輸入遊戲 bundle 目錄，產出託管用衍生資料集到 `<out_dir>/<version>/`：
-//! `index.json` / `catalog.json` / `tree/**` / `strings/**` / `sheets/**` / `textures/**` /
-//! `features/**`（聚合資料：怪物圖鑑、技能書、商城、紙娃娃、動作延遲）/ `audio/**`（Ogg）。
+//! `index.json.gz` / `catalog.json.gz` / `tree/**.json.gz` / `strings/**.json.gz` /
+//! `sheets/**`（png）/ `textures/**`（png）/ `features/**.json.gz`
+//! （聚合資料：怪物圖鑑、技能書、商城、紙娃娃、動作延遲）/ `audio/**`（Ogg）。
+//! 所有 JSON 產出皆為 gzip 壓縮（`.json.gz`），不保留未壓縮版本。
 //!
 //! 用法：
 //! ```text
@@ -13,8 +15,11 @@
 //! ```
 
 use std::collections::{HashMap, HashSet};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use flate2::write::GzEncoder;
+use flate2::Compression;
 use msclassic::catalog::{DataService, EntryLocation};
 use msclassic::image::{parse_wzss, WzssIndex};
 use msclassic::unity::bundle::Bundle;
@@ -99,7 +104,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut stats = Stats::default();
 
-    // ── catalog.json：精簡索引 ──
+    // ── catalog.json.gz：精簡索引 ──
     std::fs::create_dir_all(&out_root)?;
     let entries: serde_json::Map<String, serde_json::Value> = svc
         .catalog
@@ -108,9 +113,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|(path, loc)| (path.clone(), serde_json::json!(loc.class_id)))
         .collect();
     let catalog_json = serde_json::to_vec(&serde_json::json!({ "entries": entries }))?;
-    stats.bytes_catalog = catalog_json.len() as u64;
-    std::fs::write(out_root.join("catalog.json"), &catalog_json)?;
-    println!("catalog.json: {} entries", svc.catalog.entries.len());
+    stats.bytes_catalog = write_json_gz(&out_root.join("catalog.json"), &catalog_json)?;
+    println!("catalog.json.gz: {} entries", svc.catalog.entries.len());
 
     if !args.skip_trees {
         export_trees(&svc, &out_root, args.limit_imgs, &mut stats)?;
@@ -131,7 +135,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         export_audio(&svc, &out_root, &mut stats)?;
     }
 
-    // ── index.json ──
+    // ── index.json.gz ──
     let index = serde_json::json!({
         "version": args.version,
         "generated_at": args.generated_at,
@@ -156,9 +160,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "audio": stats.bytes_audio,
         },
     });
-    std::fs::write(
-        out_root.join("index.json"),
-        serde_json::to_vec_pretty(&index)?,
+    write_json_gz(
+        &out_root.join("index.json"),
+        &serde_json::to_vec_pretty(&index)?,
     )?;
 
     println!(
@@ -270,12 +274,7 @@ fn export_one_tree(
     let root = node_to_json(&tree, "", img_key, wzss.as_ref(), stats);
     let json = serde_json::to_vec(&root)?;
     let out_path = tree_dir.join(safe_rel_path(img_key)).with_extension("json");
-    if let Some(parent) = out_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let len = json.len() as u64;
-    std::fs::write(out_path, json)?;
-    Ok(len)
+    write_json_gz(&out_path, &json)
 }
 
 /// WzNode → 託管用 tree JSON（自訂形狀，不動 WzNode 本身的 Serialize）。
@@ -369,12 +368,8 @@ fn export_strings(
                 };
                 let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
                 let out_path = strings_dir.join(safe_rel_path(path)).with_extension("json");
-                if let Some(parent) = out_path.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-                std::fs::write(&out_path, text)?;
+                stats.bytes_strings += write_json_gz(&out_path, text.as_bytes())?;
                 stats.strings += 1;
-                stats.bytes_strings += text.len() as u64;
             }
             Err(e) => {
                 if stats.string_fail < 10 {
@@ -651,8 +646,8 @@ fn feature_step(
     run: impl FnOnce() -> Result<(Vec<u8>, usize), Box<dyn std::error::Error>>,
 ) {
     let result = run().and_then(|(json, count)| {
-        std::fs::write(dir.join(file), &json)?;
-        Ok((json.len() as u64, count))
+        let bytes = write_json_gz(&dir.join(file), &json)?;
+        Ok((bytes, count))
     });
     match result {
         Ok((bytes, count)) => {
@@ -664,7 +659,7 @@ fn feature_step(
                 .feature_bytes
                 .insert(key.to_string(), serde_json::json!(bytes));
             stats.features_ok += 1;
-            println!("[features] {file}: {count} 筆（{bytes} bytes）");
+            println!("[features] {file}.gz: {count} 筆（{bytes} bytes）");
         }
         Err(e) => {
             println!("!! [features] {file}: {e}");
@@ -813,6 +808,27 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let day = (doy - (153 * mp + 2) / 5 + 1) as u32;
     let month = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
     (if month <= 2 { year + 1 } else { year }, month, day)
+}
+
+/// 寫 gzip 壓縮 JSON：壓縮後寫到 `<json_path>.gz`，並刪除同路徑的舊
+/// 未壓縮 `.json`（避免新舊產物並存）。父目錄自動建立；回傳壓縮後位元組數。
+fn write_json_gz(json_path: &Path, data: &[u8]) -> Result<u64, Box<dyn std::error::Error>> {
+    if let Some(parent) = json_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
+    encoder.write_all(data)?;
+    let gz = encoder.finish()?;
+    let mut gz_name = json_path.as_os_str().to_owned();
+    gz_name.push(".gz");
+    let len = gz.len() as u64;
+    std::fs::write(gz_name, gz)?;
+    match std::fs::remove_file(json_path) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.into()),
+    }
+    Ok(len)
 }
 
 /// 邏輯路徑 → 安全的相對路徑（逐段消毒，防 `..`、絕對路徑與 Windows 保留字）。

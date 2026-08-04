@@ -7,16 +7,19 @@ const hostedApi = fileURLToPath(new URL("./src/api.hosted.ts", import.meta.url))
 // Hosted（靜態資料集）版建置設定：與 vite.config.web.ts 同款，差異在
 // 1. alias：把 App/components 的 "./api" / "../api" 換成 src/api.hosted.ts
 //    （純 HTTP fetch 版，不需要 WASM worker）。
-// 2. define：資料集根 URL 與版本，可用環境變數覆寫（本機開發預設
-//    scripts/serve_hosted.mjs 的 http://localhost:8788 + v20260804）。
+// 2. define：資料集根 URL 與版本，可用環境變數覆寫。預設值依 command 區分：
+//    dev 用 scripts/serve_hosted.mjs 的 http://localhost:8788；
+//    build 用同源 "/data"（部署後由 workers/hosted.js 從 R2 取出）。
+//    環境變數 VITE_HOSTED_DATA_BASE 永遠最優先。
 // 3. 獨立 outDir dist-hosted/，不覆蓋桌面版 dist/ 與 web 版 dist-web/。
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [react()],
   clearScreen: false,
   define: {
     __WEB_BUILD__: "true",
     __HOSTED_DATA_BASE__: JSON.stringify(
-      process.env.VITE_HOSTED_DATA_BASE ?? "http://localhost:8788",
+      process.env.VITE_HOSTED_DATA_BASE ??
+        (command === "build" ? "/data" : "http://localhost:8788"),
     ),
     __HOSTED_DATA_VERSION__: JSON.stringify(
       process.env.VITE_HOSTED_DATA_VERSION ?? "v20260804",
@@ -49,4 +52,4 @@ export default defineConfig({
     outDir: "dist-hosted",
     target: "es2022",
   },
-});
+}));

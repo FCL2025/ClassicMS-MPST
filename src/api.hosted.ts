@@ -5,6 +5,15 @@
 // 資料集結構與共用機制（fetch / catalog / tree / strings / 圖片 / UOL）見
 // src/hosted/core.ts；本檔只保留 API 契約型別與契約函式本身。
 
+// Service Worker（public/sw-hosted.js）：對同源 /data/ 的不可變資料做 cache-first
+// 快取，二次造訪幾乎零網路。只在 production 且瀏覽器支援時註冊；桌面/web 版
+// 不會 alias 到本檔，完全不會註冊。
+if (!import.meta.env.DEV && "serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw-hosted.js").catch(() => {
+    // 註冊失敗（例如隱私模式）不影響功能，只是沒有離線快取。
+  });
+}
+
 import {
   CLASS_AUDIO_CLIP,
   CLASS_TEXT_ASSET,
