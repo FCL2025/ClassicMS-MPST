@@ -2,13 +2,14 @@
 //!
 //! 輸入遊戲 bundle 目錄，產出託管用衍生資料集到 `<out_dir>/<version>/`：
 //! `index.json` / `catalog.json` / `tree/**` / `strings/**` / `sheets/**` / `textures/**` /
-//! `features/**`（聚合資料：怪物圖鑑、技能書、商城、紙娃娃、動作延遲）。
+//! `features/**`（聚合資料：怪物圖鑑、技能書、商城、紙娃娃、動作延遲）/ `audio/**`（Ogg）。
 //!
 //! 用法：
 //! ```text
 //! cargo run -p msclassic --release --example hosted_export -- \
 //!     <bundle 目錄> <輸出目錄> [--version vYYYYMMDD] [--limit-imgs N] [--limit-sheets N] \
-//!     [--skip-trees] [--skip-strings] [--skip-sheets] [--skip-textures] [--skip-features]
+//!     [--skip-trees] [--skip-strings] [--skip-sheets] [--skip-textures] [--skip-features] \
+//!     [--skip-audio]
 //! ```
 
 use std::collections::{HashMap, HashSet};
@@ -35,6 +36,7 @@ struct Args {
     skip_sheets: bool,
     skip_textures: bool,
     skip_features: bool,
+    skip_audio: bool,
 }
 
 #[derive(Default)]
@@ -54,6 +56,9 @@ struct Stats {
     features_fail: usize,
     feature_counts: serde_json::Map<String, serde_json::Value>,
     feature_bytes: serde_json::Map<String, serde_json::Value>,
+    audio: usize,
+    audio_fail: usize,
+    bytes_audio: u64,
     bytes_catalog: u64,
     bytes_tree: u64,
     bytes_strings: u64,
@@ -122,6 +127,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if !args.skip_features {
         export_features(&svc, &out_root, &mut stats)?;
     }
+    if !args.skip_audio {
+        export_audio(&svc, &out_root, &mut stats)?;
+    }
 
     // ── index.json ──
     let index = serde_json::json!({
@@ -136,6 +144,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "canvas_total": stats.canvas_total,
             "canvas_resolved": stats.canvas_resolved,
             "features": stats.feature_counts,
+            "audio": stats.audio,
         },
         "bytes": {
             "catalog": stats.bytes_catalog,
@@ -144,6 +153,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "sheets": stats.bytes_sheets,
             "textures": stats.bytes_textures,
             "features": stats.feature_bytes,
+            "audio": stats.bytes_audio,
         },
     });
     std::fs::write(
@@ -152,7 +162,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     println!(
-        "\n=== 完成（{:.2?}）：imgs={} trees={}（fail {}） strings={}（fail {}） sheets={}（fail {}） textures={}（fail {}） features={}（fail {}）",
+        "\n=== 完成（{:.2?}）：imgs={} trees={}（fail {}） strings={}（fail {}） sheets={}（fail {}） textures={}（fail {}） features={}（fail {}） audio={}（fail {}）",
         t0.elapsed(),
         stats.imgs,
         stats.trees,
@@ -164,7 +174,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         stats.textures,
         stats.texture_fail,
         stats.features_ok,
-        stats.features_fail
+        stats.features_fail,
+        stats.audio,
+        stats.audio_fail
     );
     println!(
         "canvas: total={} resolved={}（{:.2}%）",
@@ -673,6 +685,59 @@ fn node_as_i64(value: &Value) -> Option<i64> {
     }
 }
 
+// ── audio/（AudioClip → Ogg Vorbis）─────────────────────────
+
+fn export_audio(
+    svc: &DataService,
+    out_root: &Path,
+    stats: &mut Stats,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let audio_dir = out_root.join("audio");
+    let clips: Vec<&String> = svc
+        .catalog
+        .entries
+        .iter()
+        .filter(|(_, loc)| loc.class_id == objects::CLASS_AUDIO_CLIP)
+        .map(|(path, _)| path)
+        .collect();
+    println!("[audio] 共 {} 個 AudioClip", clips.len());
+
+    for (i, path) in clips.iter().enumerate() {
+        if i > 0 && i % 500 == 0 {
+            println!(
+                "[audio] {i}/{}（累計 ok={} fail={}）",
+                clips.len(),
+                stats.audio,
+                stats.audio_fail
+            );
+        }
+        let result = (|| -> Result<u64, Box<dyn std::error::Error>> {
+            let ogg = svc.get_audio(path)?;
+            let out_path = audio_dir.join(safe_rel_path(path)).with_extension("ogg");
+            if let Some(parent) = out_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let len = ogg.len() as u64;
+            std::fs::write(out_path, ogg)?;
+            Ok(len)
+        })();
+        match result {
+            Ok(bytes) => {
+                stats.audio += 1;
+                stats.bytes_audio += bytes;
+            }
+            Err(e) => {
+                if stats.audio_fail < 10 {
+                    println!("!! [audio] {path}: {e}");
+                }
+                stats.audio_fail += 1;
+            }
+        }
+    }
+    println!("[audio] 完成：ok={} fail={}", stats.audio, stats.audio_fail);
+    Ok(())
+}
+
 // ── CLI / 工具 ───────────────────────────────────────────────
 
 fn parse_args() -> Result<Args, Box<dyn std::error::Error>> {
@@ -685,6 +750,7 @@ fn parse_args() -> Result<Args, Box<dyn std::error::Error>> {
     let mut skip_sheets = false;
     let mut skip_textures = false;
     let mut skip_features = false;
+    let mut skip_audio = false;
 
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -701,12 +767,13 @@ fn parse_args() -> Result<Args, Box<dyn std::error::Error>> {
             "--skip-sheets" => skip_sheets = true,
             "--skip-textures" => skip_textures = true,
             "--skip-features" => skip_features = true,
+            "--skip-audio" => skip_audio = true,
             other if other.starts_with("--") => return Err(format!("未知參數: {other}").into()),
             _ => positional.push(arg),
         }
     }
     if positional.len() != 2 {
-        return Err("用法: hosted_export <bundle_dir> <out_dir> [--version V] [--limit-imgs N] [--limit-sheets N] [--skip-trees] [--skip-strings] [--skip-sheets] [--skip-textures] [--skip-features]".into());
+        return Err("用法: hosted_export <bundle_dir> <out_dir> [--version V] [--limit-imgs N] [--limit-sheets N] [--skip-trees] [--skip-strings] [--skip-sheets] [--skip-textures] [--skip-features] [--skip-audio]".into());
     }
     let (year, month, day) = today();
     Ok(Args {
@@ -721,6 +788,7 @@ fn parse_args() -> Result<Args, Box<dyn std::error::Error>> {
         skip_sheets,
         skip_textures,
         skip_features,
+        skip_audio,
     })
 }
 

@@ -122,7 +122,9 @@ R2 上傳用 `wrangler r2 object put` 或 rclone（萬級檔案建議 rclone 分
 - **版權**：託管 = 公開再散佈 Nexon 遊戲資產，有 DMCA 下架風險。
   現行「讀本機檔案」模式無此問題。此風險已在決策時確認過，仍記錄在此。
 - 遊戲更新後需重跑 pipeline 並上傳差異；流程要盡量一鍵化。
-- 音效體積未測量，若過大（>數百 MB）需評估是否只上常用音效或轉 AAC。
+- 音效實測 277MB（2,767 個 Ogg Vorbis），全量收錄；Ogg 在 Safari 的
+  `<audio>` 不支援（與既有本機資料夾網頁版相同的限制），如未來要支援
+  Safari 再評估轉 AAC。
 - R2 公開 bucket 無法擋爬蟲全量下載；如需基本防護可在 Workers 加
   Referer 檢查或簽發短效 token（但本就打算公開，優先級低）。
 
@@ -134,7 +136,7 @@ R2 上傳用 `wrangler r2 object put` 或 rclone（萬級檔案建議 rclone 分
        （本機起靜態伺服器指向 `out/hosted` 即可開發，不必先上 R2）
 3. [x] **M3 功能資料**：tooltip、怪物圖鑑、技能書、商城、紙娃娃接上 hosted 資料
 4. [ ] **M4 部署**：R2 bucket + Workers API + Service Worker 快取上線
-5. [ ] **M5 音效**：測量、轉檔、接上
+5. [x] **M5 音效**：測量、轉檔、接上
 6. [ ] **M6 更新流程**：遊戲更新 → 一鍵重跑 pipeline + 差異上傳腳本
 
 ## M1 實測結果（2026-08-04）
@@ -215,3 +217,18 @@ bash scripts/hosted_to_webp.sh out/hosted/v20260804   # PNG → lossless WebP（
   35 張出沒地圖）、技能頁（精靈的祝福，等級滑桿數值正確）、紙娃娃（裝備格 + 預覽
   渲染）、物品 tooltip（藍色毛帽）全部正確。
 - 剩餘未接：匯出（M4 後評估）、音效（M5）。
+
+## M5 實測結果（2026-08-04）
+
+- pipeline 新增 audio 階段（`--skip-audio` 可跳過）：走訪 class_id==83 的
+  AudioClip entry，`DataService::get_audio`（FSB5 → Ogg Vorbis 轉封裝）寫到
+  `audio/<路徑>.ogg`。全量 **2,767 個、277MB**（平均 102KB；最大 BGM 4.7MB），
+  fail=0，2.3 秒跑完。index.json 已帶 audio 統計。
+- 格式維持 Ogg Vorbis（與桌面版/本機資料夾網頁版相同）；Safari `<audio>`
+  不支援 Ogg 是既有限制，未來要支援 Safari 再轉 AAC（ffmpeg 已確認可用）。
+- 前端 `getAudio` 接上：fetch `audio/<path>.ogg` → base64（契約不變）。
+- 瀏覽器實測（CDP）：`decodeAudioData` 解出 88.74 秒立體聲（與 ffprobe 一致）；
+  選取 `Sound/BgmUI/ShopBgm` 節點後播放器就緒（readyState 4、duration 正確）。
+- 排障備忘：vite dev server 長時間 HMR 後曾出現 hash 導航失效的假性 bug，
+  重啟 dev server 即恢復；CDP 測試同 origin 換 hash 不會重整頁面，
+  測試 URL 要加 dummy query 強制 reload。

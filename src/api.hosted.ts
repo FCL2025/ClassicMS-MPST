@@ -400,8 +400,17 @@ export const getNode = async (path: string): Promise<NodeDetail> => {
   };
 };
 
-export const getAudio = (): Promise<AudioResult> =>
-  Promise.reject(new Error("hosted 模式尚未支援音效（M5）"));
+/** 音效：pipeline 已轉封裝成 Ogg Vorbis，直接抓 `audio/<path>.ogg` 回 base64。 */
+export const getAudio = async (path: string): Promise<AudioResult> => {
+  const response = await fetchChecked(`${DATA_ROOT}/audio/${path}.ogg`);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + CHUNK));
+  }
+  return { base64: btoa(binary) };
+};
 
 export const searchNodes = async (
   query: string,
