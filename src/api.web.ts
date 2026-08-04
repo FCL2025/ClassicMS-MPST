@@ -8,6 +8,7 @@ import {
   pickFolder,
   reconnectStoredFolder,
   storedFolderState,
+  type PickFolderOptions,
   type PickedFolder,
 } from "./web/pickFolder";
 
@@ -280,8 +281,10 @@ let pendingPick: PickedFolder | null = null;
 // 上次成功開啟的資料夾標籤(顯示用);搭配 OPFS 快取做啟動自動載入。
 const CACHED_DIR_LABEL_KEY = "msclassic-data-dir-label";
 
-export const pickDataDirectory = async (): Promise<string | null> => {
-  const picked = await pickFolder();
+export const pickDataDirectory = async (
+  options: PickFolderOptions = {},
+): Promise<string | null> => {
+  const picked = await pickFolder(options);
   if (!picked) return null;
   pendingPick = picked;
   return picked.label;

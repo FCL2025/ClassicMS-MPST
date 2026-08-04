@@ -117,7 +117,13 @@ const backend = () => (getDataSource() === "local" ? web : hosted);
 // export 契約：開啟 / 瀏覽（依來源委派）
 // ---------------------------------------------------------------------------
 
-export const pickDataDirectory = (): Promise<string | null> => backend().pickDataDirectory();
+export const pickDataDirectory = (): Promise<string | null> => {
+  // hosted 的本機模式直接用相容選擇器，避開 Chromium 對系統目錄的封鎖。
+  if (getDataSource() === "local") {
+    return web.pickDataDirectory({ preferCompatibility: true });
+  }
+  return hosted.pickDataDirectory();
+};
 
 export const openDataDir = async (path?: string): Promise<OpenResult> => {
   if (getDataSource() === "cloud") await legacyHostedCacheCleanup;

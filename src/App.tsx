@@ -734,7 +734,7 @@ export default function App() {
                     檔案僅在你的電腦本機讀取，不會上傳到任何伺服器。
                   </p>
                 ) : null}
-                {__WEB_BUILD__ ? (
+                {__WEB_BUILD__ && !CAN_SWITCH_DATA_SOURCE ? (
                   <p className="welcome-hint">
                     Chrome／Edge 若提示「無法開啟此資料夾，因為其包含系統檔案」，直接取消該對話框，
                     再按一次「選擇資料夾」即會改用相容選擇器，同樣的位置即可正常選取。

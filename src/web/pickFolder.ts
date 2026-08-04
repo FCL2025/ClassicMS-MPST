@@ -21,6 +21,11 @@ export interface PickedFolder {
   files: File[];
 }
 
+export interface PickFolderOptions {
+  /** 直接使用不受 Chromium 系統目錄封鎖的 webkitdirectory 選擇器。 */
+  preferCompatibility?: boolean;
+}
+
 // 候選層級,順序與 gui.rs resolve_data_root 一致。
 const CANDIDATES = [
   "",
@@ -55,9 +60,12 @@ const FSA_DISABLED_KEY = "msclassic-fsa-disabled";
 // FSA 對話框被取消/失敗時設定,下一次點擊改用 webkitdirectory(一次性)。
 let fsaRetryWithInput = false;
 
-/** 主入口:回傳 null 表示使用者取消。支援 FSA 時優先走 showDirectoryPicker。 */
-export async function pickFolder(): Promise<PickedFolder | null> {
+/** 主入口:回傳 null 表示使用者取消。支援 FSA 時預設優先走 showDirectoryPicker。 */
+export async function pickFolder(
+  options: PickFolderOptions = {},
+): Promise<PickedFolder | null> {
   const fsaAvailable =
+    !options.preferCompatibility &&
     typeof window.showDirectoryPicker === "function" &&
     !localStorage.getItem(FSA_DISABLED_KEY) &&
     !fsaRetryWithInput;
@@ -80,6 +88,7 @@ export async function pickFolder(): Promise<PickedFolder | null> {
   if (picked) {
     fsaRetryWithInput = false;
     if (
+      !options.preferCompatibility &&
       typeof window.showDirectoryPicker === "function" &&
       !localStorage.getItem(FSA_DISABLED_KEY)
     ) {
