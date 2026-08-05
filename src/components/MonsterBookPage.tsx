@@ -122,37 +122,6 @@ function MobSprite({ frames, playing }: { frames: MobFrame[]; playing: boolean }
   );
 }
 
-// 掉落物很多時只載入接近可視區的 icon；共用一個 observer，避免每個道具各建一個。
-const nearViewportCallbacks = new WeakMap<Element, () => void>();
-let nearViewportObserver: IntersectionObserver | null = null;
-
-function observeNearViewport(element: Element, callback: () => void): () => void {
-  if (typeof IntersectionObserver === "undefined") {
-    callback();
-    return () => undefined;
-  }
-  if (!nearViewportObserver) {
-    nearViewportObserver = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (!entry.isIntersecting) continue;
-          const load = nearViewportCallbacks.get(entry.target);
-          nearViewportCallbacks.delete(entry.target);
-          nearViewportObserver?.unobserve(entry.target);
-          load?.();
-        }
-      },
-      { rootMargin: "240px 0px" },
-    );
-  }
-  nearViewportCallbacks.set(element, callback);
-  nearViewportObserver.observe(element);
-  return () => {
-    nearViewportCallbacks.delete(element);
-    nearViewportObserver?.unobserve(element);
-  };
-}
-
 function MobDropIcon({
   drop,
   loadIcon,
@@ -162,25 +131,23 @@ function MobDropIcon({
   loadIcon: (itemId: number) => Promise<string | null>;
   onMissing: (itemId: number) => void;
 }) {
-  const placeholderRef = useRef<HTMLSpanElement>(null);
   const [base64, setBase64] = useState<string | null | undefined>(drop.iconBase64);
 
   useEffect(() => {
     setBase64(drop.iconBase64);
     if (drop.iconBase64 !== undefined) return;
-    const element = placeholderRef.current;
-    if (!element) return;
     let active = true;
-    const stopObserving = observeNearViewport(element, () => {
-      void loadIcon(drop.itemId).then((icon) => {
+    void loadIcon(drop.itemId)
+      .then((icon) => {
         if (!active) return;
         setBase64(icon);
         if (icon == null && drop.name == null) onMissing(drop.itemId);
+      })
+      .catch(() => {
+        if (active) setBase64(null);
       });
-    });
     return () => {
       active = false;
-      stopObserving();
     };
   }, [drop.iconBase64, drop.itemId, drop.name, loadIcon, onMissing]);
 
@@ -195,10 +162,7 @@ function MobDropIcon({
     );
   }
   return (
-    <span
-      ref={base64 === undefined ? placeholderRef : undefined}
-      className="monster-drop-fallback"
-    >
+    <span className="monster-drop-fallback">
       {drop.itemId}
     </span>
   );
