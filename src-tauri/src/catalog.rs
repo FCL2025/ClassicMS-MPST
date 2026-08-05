@@ -1008,10 +1008,8 @@ pub(crate) fn split_img_prefix(catalog: &Catalog, path: &str) -> Option<(String,
                 inner.strip_prefix('/').unwrap_or(inner).to_string(),
             ));
         }
-        match p.rfind('/') {
-            Some(i) => p = &p[..i],
-            None => return None,
-        }
+        let i = p.rfind('/')?;
+        p = &p[..i];
     }
 }
 

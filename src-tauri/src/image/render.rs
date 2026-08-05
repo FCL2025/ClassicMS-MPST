@@ -299,10 +299,8 @@ fn split_set_asset_prefix(
                 inner.strip_prefix('/').unwrap_or(inner).to_string(),
             ));
         }
-        match p.rfind('/') {
-            Some(i) => p = &p[..i],
-            None => return None,
-        }
+        let i = p.rfind('/')?;
+        p = &p[..i];
     }
 }
 
