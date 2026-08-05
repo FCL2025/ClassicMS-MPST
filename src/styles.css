@@ -2744,10 +2744,25 @@ textarea:focus-visible,
 }
 
 .monster-detail {
+  position: relative;
   display: grid;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
+
+.monster-detail-loading {
+  position: absolute;
+  z-index: 2;
+  top: 10px;
+  right: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface-raised) 88%, transparent);
+  color: var(--muted);
+  padding: 4px 8px;
+  font-size: 0.68rem;
+  pointer-events: none;
 }
 
 .monster-detail-scroll {

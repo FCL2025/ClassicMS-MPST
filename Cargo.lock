@@ -2011,7 +2011,7 @@ dependencies = [
 
 [[package]]
 name = "msclassic"
-version = "0.20.7"
+version = "0.20.8"
 dependencies = [
  "base64 0.22.1",
  "flate2",

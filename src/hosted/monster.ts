@@ -32,6 +32,9 @@ import { itemPathCandidates, loadItemNameTable } from "./tooltip";
 
 let monsterBookPromise: Promise<MonsterSummary[]> | null = null;
 let commodityPromise: Promise<CommodityItem[]> | null = null;
+const MOB_DETAIL_CACHE_LIMIT = 32;
+const mobDetailPromiseCache = new Map<number, Promise<MobDetail>>();
+const mobDropIconPromiseCache = new Map<number, Promise<string | null>>();
 
 export function getMonsterBook(): Promise<MonsterSummary[]> {
   if (!monsterBookPromise) {
@@ -254,6 +257,19 @@ async function dropIconBase64(itemId: number): Promise<string | null> {
   return null;
 }
 
+/** 圖鑑 UI 懶載入單一道具 icon；同一 item 在整個 session 只切圖一次。 */
+export function getMobDropIcon(itemId: number): Promise<string | null> {
+  let cached = mobDropIconPromiseCache.get(itemId);
+  if (!cached) {
+    cached = dropIconBase64(itemId);
+    cached.catch(() => {
+      mobDropIconPromiseCache.delete(itemId);
+    });
+    mobDropIconPromiseCache.set(itemId, cached);
+  }
+  return cached;
+}
+
 // ---------------------------------------------------------------------------
 // Mob 動畫幀（對齊 monster.rs 的 mob_frames）
 // ---------------------------------------------------------------------------
@@ -308,28 +324,53 @@ async function mobFrames(tree: TreeNode): Promise<MobFrame[]> {
  * 單一怪物明細：能力值（Mob img info）、動畫幀、掉落物（名稱+icon）、
  * 出沒地圖與圖鑑文字。缺 Mob img 時能力值/動畫留空，不報錯。
  */
-export async function getMobDetail(mobId: number): Promise<MobDetail> {
-  const names = await loadNameTables();
-  const bookText = names.bookTexts.get(mobId) ?? null;
-
-  const imgPath = `Mob/${String(mobId).padStart(7, "0")}`;
-  const state = requireCatalog();
-  let mobTree: TreeNode | null = null;
-  if (Object.prototype.hasOwnProperty.call(state.entries, imgPath)) {
-    try {
-      mobTree = await loadTree(imgPath);
-    } catch {
-      mobTree = null;
+export function getMobDetail(mobId: number): Promise<MobDetail> {
+  let cached = mobDetailPromiseCache.get(mobId);
+  if (cached) {
+    // Map 插入順序作為簡易 LRU；常用怪物留在快取尾端。
+    mobDetailPromiseCache.delete(mobId);
+    mobDetailPromiseCache.set(mobId, cached);
+  }
+  if (!cached) {
+    cached = buildMobDetail(mobId);
+    cached.catch(() => {
+      mobDetailPromiseCache.delete(mobId);
+    });
+    mobDetailPromiseCache.set(mobId, cached);
+    if (mobDetailPromiseCache.size > MOB_DETAIL_CACHE_LIMIT) {
+      const oldest = mobDetailPromiseCache.keys().next().value;
+      if (oldest !== undefined) mobDetailPromiseCache.delete(oldest);
     }
   }
+  return cached;
+}
+
+async function buildMobDetail(mobId: number): Promise<MobDetail> {
+  const state = requireCatalog();
+  const imgPath = `Mob/${String(mobId).padStart(7, "0")}`;
+  const mobTreePromise = Object.prototype.hasOwnProperty.call(state.entries, imgPath)
+    ? loadTree(imgPath).catch(() => null)
+    : Promise.resolve(null);
+  const bookTreePromise = Object.prototype.hasOwnProperty.call(state.entries, "MonsterBook")
+    ? loadTree("MonsterBook")
+    : Promise.resolve(null);
+  const framesPromise = mobTreePromise.then((tree) => (tree ? mobFrames(tree) : []));
+  // 名稱表、怪物樹、圖鑑樹與動畫 sheet 盡可能並行，縮短首次明細等待時間。
+  const [names, mobTree, bookTree, frames] = await Promise.all([
+    loadNameTables(),
+    mobTreePromise,
+    bookTreePromise,
+    framesPromise,
+  ]);
+  const bookText = names.bookTexts.get(mobId) ?? null;
+
   const info = mobTree ? findNode(mobTree, "info") : null;
   const stat = (name: string) => (info ? (propI64(info, name) ?? 0) : 0);
 
   // 掉落物與地圖從 MonsterBook 樹取（key 為無補零的 mob id）。
   let dropIds: number[] = [];
   let mapIds: number[] = [];
-  if (Object.prototype.hasOwnProperty.call(state.entries, "MonsterBook")) {
-    const bookTree = await loadTree("MonsterBook");
+  if (bookTree) {
     const entry = (bookTree.children ?? []).find(
       (child) => Number.parseInt(child.name, 10) === mobId,
     );
@@ -339,14 +380,12 @@ export async function getMobDetail(mobId: number): Promise<MobDetail> {
     }
   }
 
-  const drops: MobDropItem[] = [];
-  for (const itemId of dropIds) {
-    const name = names.items.get(itemId) ?? null;
-    const iconBase64 = await dropIconBase64(itemId);
-    // 幽靈道具過濾：名稱與 icon 都查不到 = 未實裝道具，直接隱藏。
-    if (name == null && iconBase64 == null) continue;
-    drops.push({ itemId, name, iconBase64 });
-  }
+  // 明細先回名稱；所有 icon 由 UI 接近可視區時再載入，不阻塞怪物切換。
+  // 名稱與 icon 都不存在的幽靈道具會在 icon 確認後由 UI 隱藏。
+  const drops: MobDropItem[] = dropIds.map((itemId) => ({
+    itemId,
+    name: names.items.get(itemId) ?? null,
+  }));
   const maps: MapRef[] = mapIds.map((mapId) => ({
     mapId,
     name: names.maps.get(mapId) ?? null,
@@ -373,6 +412,6 @@ export async function getMobDetail(mobId: number): Promise<MobDetail> {
     undead: stat("undead") !== 0,
     maps,
     drops,
-    frames: mobTree ? await mobFrames(mobTree) : [],
+    frames,
   };
 }

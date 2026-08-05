@@ -187,6 +187,9 @@ export const getMonsterBook = (): Promise<MonsterSummary[]> => backend().getMons
 
 export const getMobDetail = (mobId: number): Promise<MobDetail> => backend().getMobDetail(mobId);
 
+export const getMobDropIcon = (itemId: number): Promise<string | null> =>
+  backend().getMobDropIcon(itemId);
+
 export const getSkillBook = (): Promise<SkillJobGroup[]> => backend().getSkillBook();
 
 export const getSkillDetail = (job: string, skillId: string): Promise<SkillDetail> =>

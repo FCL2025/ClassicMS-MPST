@@ -163,7 +163,8 @@ export interface MapRef {
 export interface MobDropItem {
   itemId: number;
   name: string | null;
-  iconBase64: string | null;
+  /** undefined 表示圖示可延後載入；null 表示已確認沒有圖示。 */
+  iconBase64?: string | null;
 }
 
 /** Mob 動畫的一幀（base64 PNG + 播放資訊）。 */
@@ -455,7 +456,7 @@ export const searchNodes = async (
 
 export { getItemTooltip, getItemTooltipById } from "./tooltip";
 
-export { getCommodityItems, getMonsterBook, getMobDetail } from "./monster";
+export { getCommodityItems, getMonsterBook, getMobDetail, getMobDropIcon } from "./monster";
 
 export { getSkillBook, getSkillDetail } from "./skill";
 

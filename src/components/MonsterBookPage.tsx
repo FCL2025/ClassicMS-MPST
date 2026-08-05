@@ -1,15 +1,39 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  getDataSource,
   getItemTooltipById,
   getMobDetail,
+  getMobDropIcon,
   getMonsterBook,
+  supportsDataSourceSwitch,
   type ItemTooltip as ItemTooltipData,
   type MobDetail,
+  type MobDropItem,
   type MobFrame,
   type MonsterSummary,
 } from "../api";
 import { ItemTooltip } from "./ItemTooltip";
+
+const mobFrameImageCache = new WeakMap<MobFrame, Promise<HTMLImageElement>>();
+
+function loadMobFrameImage(frame: MobFrame): Promise<HTMLImageElement> {
+  let cached = mobFrameImageCache.get(frame);
+  if (!cached) {
+    cached = new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.decoding = "async";
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("幀圖載入失敗"));
+      img.src = `data:image/png;base64,${frame.base64}`;
+    });
+    cached.catch(() => {
+      mobFrameImageCache.delete(frame);
+    });
+    mobFrameImageCache.set(frame, cached);
+  }
+  return cached;
+}
 
 /** Mob 動畫：逐幀播放，各幀以 origin 對齊（取全幀 bounding box）避免跳動。 */
 function MobSprite({ frames, playing }: { frames: MobFrame[]; playing: boolean }) {
@@ -27,17 +51,7 @@ function MobSprite({ frames, playing }: { frames: MobFrame[]; playing: boolean }
       setBox(null);
       return;
     }
-    Promise.all(
-      frames.map(
-        (frame) =>
-          new Promise<HTMLImageElement>((resolve, reject) => {
-            const img = new Image();
-            img.onload = () => resolve(img);
-            img.onerror = () => reject(new Error("幀圖載入失敗"));
-            img.src = `data:image/png;base64,${frame.base64}`;
-          }),
-      ),
-    )
+    Promise.all(frames.map(loadMobFrameImage))
       .then((loaded) => {
         if (cancelled) return;
         let left = 0;
@@ -108,6 +122,134 @@ function MobSprite({ frames, playing }: { frames: MobFrame[]; playing: boolean }
   );
 }
 
+// 掉落物很多時只載入接近可視區的 icon；共用一個 observer，避免每個道具各建一個。
+const nearViewportCallbacks = new WeakMap<Element, () => void>();
+let nearViewportObserver: IntersectionObserver | null = null;
+
+function observeNearViewport(element: Element, callback: () => void): () => void {
+  if (typeof IntersectionObserver === "undefined") {
+    callback();
+    return () => undefined;
+  }
+  if (!nearViewportObserver) {
+    nearViewportObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const load = nearViewportCallbacks.get(entry.target);
+          nearViewportCallbacks.delete(entry.target);
+          nearViewportObserver?.unobserve(entry.target);
+          load?.();
+        }
+      },
+      { rootMargin: "240px 0px" },
+    );
+  }
+  nearViewportCallbacks.set(element, callback);
+  nearViewportObserver.observe(element);
+  return () => {
+    nearViewportCallbacks.delete(element);
+    nearViewportObserver?.unobserve(element);
+  };
+}
+
+function MobDropIcon({
+  drop,
+  loadIcon,
+  onMissing,
+}: {
+  drop: MobDropItem;
+  loadIcon: (itemId: number) => Promise<string | null>;
+  onMissing: (itemId: number) => void;
+}) {
+  const placeholderRef = useRef<HTMLSpanElement>(null);
+  const [base64, setBase64] = useState<string | null | undefined>(drop.iconBase64);
+
+  useEffect(() => {
+    setBase64(drop.iconBase64);
+    if (drop.iconBase64 !== undefined) return;
+    const element = placeholderRef.current;
+    if (!element) return;
+    let active = true;
+    const stopObserving = observeNearViewport(element, () => {
+      void loadIcon(drop.itemId).then((icon) => {
+        if (!active) return;
+        setBase64(icon);
+        if (icon == null && drop.name == null) onMissing(drop.itemId);
+      });
+    });
+    return () => {
+      active = false;
+      stopObserving();
+    };
+  }, [drop.iconBase64, drop.itemId, drop.name, loadIcon, onMissing]);
+
+  if (base64) {
+    return (
+      <img
+        alt={drop.name ?? String(drop.itemId)}
+        decoding="async"
+        draggable={false}
+        src={`data:image/png;base64,${base64}`}
+      />
+    );
+  }
+  return (
+    <span
+      ref={base64 === undefined ? placeholderRef : undefined}
+      className="monster-drop-fallback"
+    >
+      {drop.itemId}
+    </span>
+  );
+}
+
+const MonsterList = memo(function MonsterList({
+  entries,
+  query,
+  selectedId,
+  onSelect,
+  onPrime,
+  onSchedulePrefetch,
+  onCancelPrefetch,
+}: {
+  entries: MonsterSummary[];
+  query: string;
+  selectedId: number | null;
+  onSelect: (mobId: number) => void;
+  onPrime: (mobId: number) => void;
+  onSchedulePrefetch: (mobId: number) => void;
+  onCancelPrefetch: () => void;
+}) {
+  return (
+    <div className="monster-list" role="listbox" aria-label="怪物清單">
+      {entries.map((entry) => (
+        <button
+          key={entry.mobId}
+          type="button"
+          role="option"
+          aria-selected={entry.mobId === selectedId}
+          className={`monster-list-item${entry.mobId === selectedId ? " is-active" : ""}`}
+          onClick={() => onSelect(entry.mobId)}
+          onFocus={() => onPrime(entry.mobId)}
+          onPointerDown={() => onPrime(entry.mobId)}
+          onPointerEnter={() => onSchedulePrefetch(entry.mobId)}
+          onPointerLeave={onCancelPrefetch}
+        >
+          <span className="monster-list-name">{entry.name ?? "（未命名）"}</span>
+          <span className="monster-list-meta">
+            {entry.level !== null ? `Lv.${entry.level}` : "Lv.?"}
+          </span>
+          <span className="monster-list-id">{entry.mobId}</span>
+        </button>
+      ))}
+      {entries.length === 0 ? (
+        <p className="monster-list-empty">沒有符合「{query}」的怪物</p>
+      ) : null}
+    </div>
+  );
+});
+
 /** 戰利品分組：依道具 id 首位分 裝備(1) / 消耗(2) / 其他（3~5、9 等）。 */
 const DROP_GROUP_ORDER = ["裝備", "消耗", "其他"] as const;
 
@@ -155,16 +297,42 @@ export function MonsterBookPage({
   const [detail, setDetail] = useState<MobDetail | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [missingDrops, setMissingDrops] = useState<{
+    mobId: number | null;
+    itemIds: Set<number>;
+  }>({ mobId: null, itemIds: new Set() });
   const detailGenerationRef = useRef(0);
 
   // 戰利品裝備 hover tooltip：結果按 itemId 快取，淡入淡出由 is-visible 控制。
-  const tooltipCacheRef = useRef(new Map<number, ItemTooltipData | null>());
+  const tooltipCacheRef = useRef(new Map<number, Promise<ItemTooltipData | null>>());
   const [dropTip, setDropTip] = useState<{ tip: ItemTooltipData; x: number; y: number } | null>(
     null,
   );
   const [dropTipVisible, setDropTipVisible] = useState(false);
   const dropTipGenerationRef = useRef(0);
   const dropTipHideTimerRef = useRef(0);
+  const prefetchTimerRef = useRef(0);
+
+  const loadItemTooltip = useCallback((itemId: number): Promise<ItemTooltipData | null> => {
+    let cached = tooltipCacheRef.current.get(itemId);
+    if (!cached) {
+      cached = getItemTooltipById(itemId).catch(() => null);
+      tooltipCacheRef.current.set(itemId, cached);
+    }
+    return cached;
+  }, []);
+
+  const loadDropIcon = useCallback((itemId: number) => getMobDropIcon(itemId), []);
+
+  const hideMissingDrop = useCallback((itemId: number) => {
+    const mobId = detail?.mobId ?? null;
+    setMissingDrops((current) => {
+      if (current.mobId === mobId && current.itemIds.has(itemId)) return current;
+      const itemIds = current.mobId === mobId ? new Set(current.itemIds) : new Set<number>();
+      itemIds.add(itemId);
+      return { mobId, itemIds };
+    });
+  }, [detail?.mobId]);
 
   const showDropTip = (itemId: number, event: React.MouseEvent) => {
     window.clearTimeout(dropTipHideTimerRef.current);
@@ -178,19 +346,9 @@ export function MonsterBookPage({
       // 掛載後下一幀才加 is-visible，才會有淡入過場。
       requestAnimationFrame(() => setDropTipVisible(true));
     };
-    const cached = tooltipCacheRef.current.get(itemId);
-    if (cached !== undefined) {
-      if (cached) present(cached);
-      return;
-    }
-    getItemTooltipById(itemId)
-      .then((tip) => {
-        tooltipCacheRef.current.set(itemId, tip);
-        if (dropTipGenerationRef.current === generation && tip) present(tip);
-      })
-      .catch(() => {
-        tooltipCacheRef.current.set(itemId, null);
-      });
+    void loadItemTooltip(itemId).then((tip) => {
+      if (dropTipGenerationRef.current === generation && tip) present(tip);
+    });
   };
 
   const hideDropTip = () => {
@@ -201,8 +359,31 @@ export function MonsterBookPage({
     dropTipHideTimerRef.current = window.setTimeout(() => setDropTip(null), 160);
   };
 
-  // 卸載時清掉淡出計時器。
-  useEffect(() => () => window.clearTimeout(dropTipHideTimerRef.current), []);
+  // 卸載時清掉淡出與預載計時器。
+  useEffect(
+    () => () => {
+      window.clearTimeout(dropTipHideTimerRef.current);
+      window.clearTimeout(prefetchTimerRef.current);
+    },
+    [],
+  );
+
+  const primeMobDetail = useCallback((mobId: number) => {
+    // 正式 hosted 雲端版才預載；本機資料避免游標滑過時觸發昂貴的 WASM 解析。
+    if (!supportsDataSourceSwitch() || getDataSource() !== "cloud") return;
+    void getMobDetail(mobId).catch(() => undefined);
+  }, []);
+
+  const scheduleMobDetailPrefetch = useCallback((mobId: number) => {
+    window.clearTimeout(prefetchTimerRef.current);
+    prefetchTimerRef.current = window.setTimeout(() => primeMobDetail(mobId), 120);
+  }, [primeMobDetail]);
+
+  const cancelMobDetailPrefetch = useCallback(() => {
+    window.clearTimeout(prefetchTimerRef.current);
+  }, []);
+
+  const selectMob = useCallback((mobId: number) => setSelectedId(mobId), []);
 
   // 清單只載入一次（此元件掛載後保持不卸載）。
   useEffect(() => {
@@ -233,6 +414,14 @@ export function MonsterBookPage({
         entry.drops.some((drop) => drop.name?.toLowerCase().includes(keyword)),
     );
   }, [book, query]);
+
+  const visibleDrops = useMemo(
+    () =>
+      detail?.drops.filter(
+        (drop) => missingDrops.mobId !== detail.mobId || !missingDrops.itemIds.has(drop.itemId),
+      ) ?? [],
+    [detail, missingDrops],
+  );
 
   // 選取怪物 → 載入明細（generation guard 防止舊回應蓋掉新選擇）。
   useEffect(() => {
@@ -278,29 +467,22 @@ export function MonsterBookPage({
               {filtered.length} / {book.length}
             </span>
           </div>
-          <div className="monster-list" role="listbox" aria-label="怪物清單">
-            {filtered.map((entry) => (
-              <button
-                key={entry.mobId}
-                type="button"
-                role="option"
-                aria-selected={entry.mobId === selectedId}
-                className={`monster-list-item${entry.mobId === selectedId ? " is-active" : ""}`}
-                onClick={() => setSelectedId(entry.mobId)}
-              >
-                <span className="monster-list-name">{entry.name ?? "（未命名）"}</span>
-                <span className="monster-list-meta">
-                  {entry.level !== null ? `Lv.${entry.level}` : "Lv.?"}
-                </span>
-                <span className="monster-list-id">{entry.mobId}</span>
-              </button>
-            ))}
-            {filtered.length === 0 ? (
-              <p className="monster-list-empty">沒有符合「{query}」的怪物</p>
-            ) : null}
-          </div>
+          <MonsterList
+            entries={filtered}
+            query={query}
+            selectedId={selectedId}
+            onSelect={selectMob}
+            onPrime={primeMobDetail}
+            onSchedulePrefetch={scheduleMobDetailPrefetch}
+            onCancelPrefetch={cancelMobDetailPrefetch}
+          />
         </aside>
-        <section className="monster-detail">
+        <section className="monster-detail" aria-busy={detailLoading}>
+          {detailLoading && detail ? (
+            <span className="monster-detail-loading" role="status">
+              正在切換怪物…
+            </span>
+          ) : null}
           {detailError ? (
             <p className="monster-page-status">怪物資料載入失敗：{detailError}</p>
           ) : !detail ? (
@@ -347,10 +529,10 @@ export function MonsterBookPage({
               ) : null}
 
               <section className="monster-section">
-                <h3>戰利品（{detail.drops.length}）</h3>
-                {detail.drops.length > 0 ? (
+                <h3>戰利品（{visibleDrops.length}）</h3>
+                {visibleDrops.length > 0 ? (
                   DROP_GROUP_ORDER.map((group) => {
-                    const items = detail.drops.filter(
+                    const items = visibleDrops.filter(
                       (drop) => dropGroup(drop.itemId) === group,
                     );
                     if (items.length === 0) return null;
@@ -373,15 +555,11 @@ export function MonsterBookPage({
                               onMouseLeave={group === "裝備" ? hideDropTip : undefined}
                             >
                               <div className="monster-drop-icon">
-                                {drop.iconBase64 ? (
-                                  <img
-                                    alt={drop.name ?? String(drop.itemId)}
-                                    draggable={false}
-                                    src={`data:image/png;base64,${drop.iconBase64}`}
-                                  />
-                                ) : (
-                                  <span className="monster-drop-fallback">{drop.itemId}</span>
-                                )}
+                                <MobDropIcon
+                                  drop={drop}
+                                  loadIcon={loadDropIcon}
+                                  onMissing={hideMissingDrop}
+                                />
                               </div>
                               <span className="monster-drop-name">{drop.name ?? drop.itemId}</span>
                             </div>

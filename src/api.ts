@@ -104,7 +104,8 @@ export interface MapRef {
 export interface MobDropItem {
   itemId: number;
   name: string | null;
-  iconBase64: string | null;
+  /** undefined 表示圖示可延後載入；null 表示已確認沒有圖示。 */
+  iconBase64?: string | null;
 }
 
 /** Mob 動畫的一幀（base64 PNG + 播放資訊）。 */
@@ -265,6 +266,8 @@ export const getCommodityItems = () => invoke<CommodityItem[]>("get_commodity_it
 export const getMonsterBook = () => invoke<MonsterSummary[]>("get_monster_book");
 export const getMobDetail = (mobId: number) =>
   invoke<MobDetail>("get_mob_detail", { mobId });
+export const getMobDropIcon = async (itemId: number): Promise<string | null> =>
+  (await getItemTooltipById(itemId))?.iconBase64 ?? null;
 export const getSkillBook = () => invoke<SkillJobGroup[]>("get_skill_book");
 export const getSkillDetail = (job: string, skillId: string) =>
   invoke<SkillDetail>("get_skill_detail", { job, skillId });
