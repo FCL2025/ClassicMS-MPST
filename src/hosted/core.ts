@@ -17,6 +17,7 @@ import type { ChildEntry, ImagePreviewResult, Value } from "../api.hosted";
 
 export const DATA_ROOT = `${__HOSTED_DATA_BASE__}/${__HOSTED_DATA_VERSION__}`;
 export const DATA_LABEL = `雲端資料 ${__HOSTED_DATA_VERSION__}`;
+const HOSTED_JSON_CACHE_REVISION = "20260805-1";
 
 export const CLASS_WZJS_IMG = 114;
 export const CLASS_TEXT_ASSET = 49;
@@ -77,8 +78,18 @@ const sheetPagePngCache = new Map<string, Promise<string>>();
 /** path → 切圖結果（資料集依版本不可變，整個 session 快取）。 */
 const imageResultCache = new Map<string, Promise<ImagePreviewResult | null>>();
 
-export async function fetchChecked(url: string): Promise<Response> {
-  const response = await fetch(url);
+export async function fetchChecked(
+  url: string,
+  options: { reload?: boolean } = {},
+): Promise<Response> {
+  const requestUrl = new URL(url, window.location.href);
+  if (requestUrl.pathname.endsWith(".json")) {
+    // 繞過舊 Service Worker 以原 URL 留下的損壞回應。
+    requestUrl.searchParams.set("data-revision", HOSTED_JSON_CACHE_REVISION);
+  }
+  const response = await fetch(requestUrl, {
+    cache: options.reload ? "reload" : "default",
+  });
   if (!response.ok) {
     throw new Error(`抓取失敗（HTTP ${response.status}）：${url}`);
   }

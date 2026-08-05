@@ -301,8 +301,8 @@ export const pickDataDirectory = (): Promise<string | null> => Promise.resolve(n
 export const openDataDir = async (_path?: string): Promise<OpenResult> => {
   const started = performance.now();
   const [indexResponse, catalogResponse] = await Promise.all([
-    fetchChecked(`${DATA_ROOT}/index.json`),
-    fetchChecked(`${DATA_ROOT}/catalog.json`),
+    fetchChecked(`${DATA_ROOT}/index.json`, { reload: true }),
+    fetchChecked(`${DATA_ROOT}/catalog.json`, { reload: true }),
   ]);
   const index = (await indexResponse.json()) as { version?: string };
   const catalog = (await catalogResponse.json()) as { entries: Record<string, number> };

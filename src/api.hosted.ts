@@ -7,23 +7,45 @@
 // 來源偏好存 localStorage（msclassic-data-source），缺省 cloud；
 // 由 App.tsx 右上角的來源切換器透過 getDataSource / setDataSource 操作。
 
-// Service Worker（public/sw-hosted.js）：對同源 /data/ 的不可變資料做 cache-first
-// 快取，二次造訪幾乎零網路。只在 production 且瀏覽器支援時註冊；桌面/web 版
-// 不會 alias 到本檔，完全不會註冊。與資料來源模式無關（本機模式不抓 /data）。
-// v0.20.0 曾快取雙層 gzip 回應；雲端連線前主動清掉舊 cache，避免新版 Worker
-// 已修正後仍被舊 Service Worker 回放壞資料。
-const legacyHostedCacheCleanup =
-  !import.meta.env.DEV && "caches" in window
-    ? window.caches.delete("msclassic-hosted-data").then(
-        () => undefined,
-        () => undefined,
-      )
-    : Promise.resolve();
+// 舊版曾以 Service Worker 永久快取 /data/，損壞的 JSON 也會被持續回放。
+// 新版改用瀏覽器原生 HTTP 快取；啟動時清除所有舊 cache 並只註銷本站的舊 Worker。
+const HOSTED_CACHE_PREFIX = "msclassic-hosted";
+const HOSTED_SERVICE_WORKER_PATH = "/sw-hosted.js";
 
-if (!import.meta.env.DEV && "serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/sw-hosted.js").catch(() => {
-    // 註冊失敗（例如隱私模式）不影響功能，只是沒有離線快取。
-  });
+async function retireLegacyHostedCaching(): Promise<void> {
+  if (import.meta.env.DEV) return;
+
+  const tasks: Promise<unknown>[] = [];
+  if ("caches" in window) {
+    tasks.push(
+      window.caches.keys().then((keys) =>
+        Promise.all(
+          keys
+            .filter((key) => key.startsWith(HOSTED_CACHE_PREFIX))
+            .map((key) => window.caches.delete(key)),
+        ),
+      ),
+    );
+  }
+  if ("serviceWorker" in navigator) {
+    tasks.push(
+      navigator.serviceWorker.getRegistrations().then((registrations) =>
+        Promise.all(
+          registrations
+            .filter((registration) =>
+              [registration.installing, registration.waiting, registration.active].some(
+                (worker) =>
+                  worker !== null &&
+                  new URL(worker.scriptURL).pathname === HOSTED_SERVICE_WORKER_PATH,
+              ),
+            )
+            .map((registration) => registration.unregister()),
+        ),
+      ),
+    );
+  }
+
+  await Promise.allSettled(tasks);
 }
 
 import * as hosted from "./hosted/backend";
@@ -126,7 +148,9 @@ export const pickDataDirectory = (): Promise<string | null> => {
 };
 
 export const openDataDir = async (path?: string): Promise<OpenResult> => {
-  if (getDataSource() === "cloud") await legacyHostedCacheCleanup;
+  // 每次連線（包含「重試」）都清一次，避免仍控制當前分頁的舊 Worker
+  // 在第一次清除後又建立同名 cache。
+  if (getDataSource() === "cloud") await retireLegacyHostedCaching();
   return backend().openDataDir(path);
 };
 
