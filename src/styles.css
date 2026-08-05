@@ -120,7 +120,10 @@ textarea:focus-visible,
   font-weight: 700;
 }
 
-.data-folder-button span {
+.data-folder-button svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
   color: var(--warning);
 }
 
@@ -3627,43 +3630,50 @@ textarea:focus-visible,
   min-height: 32px;
   flex: 0 0 auto;
   align-items: stretch;
-  border: 1px solid var(--border);
+  gap: 2px;
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
-  background: var(--button-bg);
+  background: var(--panel-strong);
+  padding: 2px;
   overflow: hidden;
 }
 
 .source-switch button {
   display: inline-flex;
+  min-height: 26px;
   align-items: center;
   gap: 6px;
   border: none;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text);
+  color: var(--muted);
   padding: 0 10px;
   font-size: 0.75rem;
   font-weight: 700;
 }
 
-.source-switch button + button {
-  border-left: 1px solid var(--border);
+.source-switch button svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
 }
 
 .source-switch button:not(:disabled):not(.is-active):hover {
   color: var(--text-strong);
-  background: var(--accent-soft);
+  background: var(--button-bg);
 }
 
 .source-switch button.is-active {
-  background: var(--accent-soft);
-  color: var(--text-strong);
+  background: var(--accent);
+  box-shadow: var(--shadow);
+  color: var(--on-accent);
 }
 
-.source-switch button.is-active span {
-  color: var(--accent);
-}
-
-.source-switch button:disabled {
+.source-switch button:disabled:not(.is-active) {
   color: var(--disabled);
+}
+
+.source-switch button.is-active:disabled {
+  color: var(--on-accent);
+  opacity: 0.72;
 }

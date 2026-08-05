@@ -7,6 +7,7 @@ import {
   type KeyboardEvent,
   type PointerEvent,
 } from "react";
+import { Cloud, Folder, FolderSync } from "lucide-react";
 import {
   getAudio,
   getDataSource,
@@ -544,7 +545,7 @@ export default function App() {
                 title="Cloudflare 託管的預處理資料，免安裝遊戲"
                 onClick={() => void switchToCloud()}
               >
-                <span aria-hidden="true">☁</span>
+                <Cloud aria-hidden="true" size={15} strokeWidth={2.25} />
                 雲端資料
               </button>
               <button
@@ -556,7 +557,7 @@ export default function App() {
                 title="讀取自己電腦裡的遊戲資料夾"
                 onClick={() => void switchToLocal()}
               >
-                <span aria-hidden="true">▣</span>
+                <Folder aria-hidden="true" size={15} strokeWidth={2.25} />
                 本機資料夾
               </button>
             </div>
@@ -567,7 +568,11 @@ export default function App() {
                 disabled={loadingData}
                 onClick={() => void chooseDataDirectory()}
               >
-                <span aria-hidden="true">▣</span>
+                {openInfo ? (
+                  <FolderSync aria-hidden="true" size={15} strokeWidth={2.25} />
+                ) : (
+                  <Folder aria-hidden="true" size={15} strokeWidth={2.25} />
+                )}
                 {loadingData ? "載入中…" : openInfo ? "更換資料夾" : "選擇資料夾"}
               </button>
             ) : null}
@@ -579,7 +584,11 @@ export default function App() {
             disabled={loadingData}
             onClick={() => void chooseDataDirectory()}
           >
-            <span aria-hidden="true">▣</span>
+            {openInfo ? (
+              <FolderSync aria-hidden="true" size={15} strokeWidth={2.25} />
+            ) : (
+              <Folder aria-hidden="true" size={15} strokeWidth={2.25} />
+            )}
             {loadingData ? "載入中…" : openInfo ? "更換資料夾" : "選擇資料夾"}
           </button>
         )}
