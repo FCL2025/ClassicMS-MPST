@@ -49,11 +49,14 @@ pub(crate) struct QuestStrings {
 }
 
 /// 任務用到的名稱表。
+#[derive(Default)]
 pub(crate) struct QuestNameTables {
     npcs: HashMap<u32, String>,
     /// 道具名稱（Item + Pet）。
     items: HashMap<u32, String>,
     mobs: HashMap<u32, String>,
+    /// 地圖名稱（String/TW/Map 的 mapName）。
+    maps: HashMap<u32, String>,
 }
 
 /// 任務清單中的一個任務。
@@ -73,12 +76,15 @@ pub struct QuestSummary {
 }
 
 /// 道具引用（需求或獎勵；count 負值＝完成時消耗）。
+/// prop 是抽取標記：正值＝隨機獲得（值為權重，無標示時視為等權），
+/// -1＝玩家自選一項，無此欄位＝固定給予。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QuestItemRef {
     pub id: i64,
     pub count: i64,
     pub name: Option<String>,
+    pub prop: Option<i64>,
 }
 
 /// 怪物引用（完成需求的討伐數量）。
@@ -258,10 +264,10 @@ impl DataService {
 
         let start = say_node
             .and_then(|quest| quest.find("0"))
-            .map(|stage| dialogue_stage(stage, start_npc_id, start_npc_name, strings, &names.npcs));
+            .map(|stage| dialogue_stage(stage, start_npc_id, start_npc_name, strings, &names));
         let end = say_node
             .and_then(|quest| quest.find("1"))
-            .map(|stage| dialogue_stage(stage, end_npc_id, end_npc_name, strings, &names.npcs));
+            .map(|stage| dialogue_stage(stage, end_npc_id, end_npc_name, strings, &names));
 
         let next_quest_id = act
             .as_ref()
@@ -283,7 +289,7 @@ impl DataService {
             info: strings
                 .info
                 .iter()
-                .map(|(key, text)| (key.clone(), substitute_npc_refs(text, &names.npcs)))
+                .map(|(key, text)| (key.clone(), substitute_refs(text, &names)))
                 .collect(),
             start,
             end,
@@ -353,6 +359,7 @@ impl DataService {
             npcs: load_names(self, "String/TW/Npc"),
             items,
             mobs: load_names(self, "String/TW/Mob"),
+            maps: load_map_names(self),
         });
         *guard = Some(tables.clone());
         Ok(tables)
@@ -374,12 +381,12 @@ fn dialogue_stage(
     npc_id: Option<i64>,
     npc_name: Option<String>,
     strings: &QuestStrings,
-    npcs: &HashMap<u32, String>,
+    names: &QuestNameTables,
 ) -> QuestDialogueStage {
     let resolve = |node: Option<&WzNode>| -> Vec<String> {
         numbered_strs(node)
             .filter_map(|key| strings.say.get(key))
-            .map(|text| substitute_npc_refs(text, npcs))
+            .map(|text| substitute_refs(text, names))
             .collect()
     };
     let mut lines = resolve(Some(stage));
@@ -387,7 +394,7 @@ fn dialogue_stage(
     if lines.is_empty() {
         if let Some(key) = as_str(&stage.value) {
             if let Some(text) = strings.say.get(key) {
-                lines.push(substitute_npc_refs(text, npcs));
+                lines.push(substitute_refs(text, names));
             }
         }
     }
@@ -422,7 +429,7 @@ fn numbered_strs(node: Option<&WzNode>) -> impl Iterator<Item = &str> {
         .filter_map(|child| as_str(&child.value))
 }
 
-/// Check/Act 階段的 item 清單：{idx: {id, count}}，count 缺省為 1。
+/// Check/Act 階段的 item 清單：{idx: {id, count, prop?}}，count 缺省為 1。
 fn item_refs(stage: Option<&WzNode>, names: &HashMap<u32, String>) -> Vec<QuestItemRef> {
     let Some(items) = stage.and_then(|node| node.find("item")) else {
         return Vec::new();
@@ -436,6 +443,7 @@ fn item_refs(stage: Option<&WzNode>, names: &HashMap<u32, String>) -> Vec<QuestI
                 id,
                 count: prop_i64(entry, "count").unwrap_or(1),
                 name: names.get(&(id as u32)).cloned(),
+                prop: prop_i64(entry, "prop"),
             })
         })
         .collect()
@@ -542,30 +550,85 @@ fn strip_bom(text: &str) -> &str {
     text.strip_prefix('\u{feff}').unwrap_or(text)
 }
 
-/// 台詞中的 `#p<id>#` NPC 引用換成 NPC 名字（查不到保留原標記，前端會去掉）。
-/// 名字落在 `#b…#k` 強調區間內時仍保留強調效果。
-fn substitute_npc_refs(text: &str, npcs: &HashMap<u32, String>) -> String {
+/// 台詞中的引用標記換成名字：`#p<id>#` NPC、`#o<id>#` 怪物、`#m<id>#` 地圖
+/// （查不到保留原標記，前端會去掉）。名字落在 `#b…#k` 強調區間內時仍保留強調效果。
+fn substitute_refs(text: &str, names: &QuestNameTables) -> String {
+    fn lookup(names: &QuestNameTables, kind: char, id: u32) -> Option<&str> {
+        let table = match kind {
+            'p' => &names.npcs,
+            'o' => &names.mobs,
+            'm' => &names.maps,
+            _ => return None,
+        };
+        table.get(&id).map(String::as_str)
+    }
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
-    while let Some(start) = rest.find("#p") {
-        let (before, from_marker) = rest.split_at(start);
-        out.push_str(before);
-        let after = &from_marker[2..];
-        let digits = after.chars().take_while(|c| c.is_ascii_digit()).count();
-        if digits > 0 && after[digits..].starts_with('#') {
-            if let Ok(id) = after[..digits].parse::<u32>() {
-                if let Some(name) = npcs.get(&id) {
-                    out.push_str(name);
-                    rest = &after[digits + 1..];
-                    continue;
-                }
+    while let Some(start) = rest.find('#') {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 1..];
+        if after.is_empty() {
+            out.push('#');
+            rest = after;
+            break;
+        }
+        let kind = after.chars().next().unwrap_or('\0');
+        // kind 必須先確認是 ASCII 的 p/o/m，才能用位元組索引切 after[1..]
+        // （否則像「#長」這種標記後直接接中文的情況會切到字元中段而 panic）。
+        if !matches!(kind, 'p' | 'o' | 'm') {
+            out.push('#');
+            rest = after;
+            continue;
+        }
+        let digits = after[1..]
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .count();
+        let name = if digits > 0 && after[1 + digits..].starts_with('#') {
+            after[1..1 + digits]
+                .parse::<u32>()
+                .ok()
+                .and_then(|id| lookup(names, kind, id))
+        } else {
+            None
+        };
+        match name {
+            Some(name) => {
+                out.push_str(name);
+                rest = &after[1 + digits + 1..];
+            }
+            None => {
+                out.push('#');
+                rest = after;
             }
         }
-        out.push_str("#p");
-        rest = after;
     }
     out.push_str(rest);
     out
+}
+
+/// 解析 `String/TW/Map`（`{id: {mapName, ...}}`），地圖 id → 地圖名。
+fn load_map_names(service: &DataService) -> HashMap<u32, String> {
+    let mut table = HashMap::new();
+    let Ok(node) = service.get_node("String/TW/Map") else {
+        return table;
+    };
+    let Some(text) = node.text_asset else {
+        return table;
+    };
+    let Ok(serde_json::Value::Object(map)) = serde_json::from_str(strip_bom(&text)) else {
+        return table;
+    };
+    for (key, value) in map {
+        let Ok(id) = key.parse::<u32>() else {
+            continue;
+        };
+        let Some(name) = value.get("mapName").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        table.insert(id, name.to_string());
+    }
+    table
 }
 
 /// 解析 `String/TW/QuestData`（`{id: {name, Info: {階段, parent}, Say: {鍵: 台詞}}}`）。
@@ -707,7 +770,7 @@ mod tests {
             Some(2101),
             Some("NPC".to_string()),
             &strings,
-            &HashMap::new(),
+            &QuestNameTables::default(),
         );
         assert_eq!(result.npc_id, Some(2101));
         // 數字鍵依數值排序；查不到文字的鍵略過
@@ -725,30 +788,42 @@ mod tests {
         let strings = strings_with_say(&[("0_0", "只有一句")]);
         // leaf 字串階段：值當作單行台詞鍵
         let leaf = str_leaf("0", "0_0");
-        let result = dialogue_stage(&leaf, None, None, &strings, &HashMap::new());
+        let result = dialogue_stage(&leaf, None, None, &strings, &QuestNameTables::default());
         assert_eq!(result.lines, vec!["只有一句"]);
         // 空節點（null 階段）：全部留空
         let empty = subtree("0", vec![]);
-        let result = dialogue_stage(&empty, None, None, &strings, &HashMap::new());
+        let result = dialogue_stage(&empty, None, None, &strings, &QuestNameTables::default());
         assert!(result.lines.is_empty());
         assert!(result.ask.is_empty());
     }
 
     #[test]
-    fn substitute_npc_refs_replaces_known_ids() {
-        let npcs: HashMap<u32, String> = [(2101, "希娜".to_string())].into_iter().collect();
+    fn substitute_refs_replaces_known_ids() {
+        let names = QuestNameTables {
+            npcs: [(2101, "希娜".to_string())].into_iter().collect(),
+            mobs: [(100100, "蝸牛".to_string())].into_iter().collect(),
+            maps: [(1010000, "楓葉村".to_string())].into_iter().collect(),
+            ..Default::default()
+        };
         // 查得到的 id 換成名字（在 #b…#k 區間內照常替換，保留強調效果）
         assert_eq!(
-            substitute_npc_refs("去找#b#p2101##k。", &npcs),
+            substitute_refs("去找#b#p2101##k。", &names),
             "去找#b希娜#k。"
         );
-        // 多個引用、查不到的 id 保留原標記（前端會去掉）
+        // #o 怪物、#m 地圖一併代換
         assert_eq!(
-            substitute_npc_refs("#p2101#與#p9999#", &npcs),
-            "希娜與#p9999#"
+            substitute_refs("打倒#o100100#後去#m1010000#", &names),
+            "打倒蝸牛後去楓葉村"
         );
+        // 查不到的 id 保留原標記（前端會去掉）
+        assert_eq!(substitute_refs("#p2101#與#p9999#", &names), "希娜與#p9999#");
         // 無引用時原樣返回
-        assert_eq!(substitute_npc_refs("普通台詞", &npcs), "普通台詞");
+        assert_eq!(substitute_refs("普通台詞", &names), "普通台詞");
+        // 非 p/o/m 標記後直接接中文（如 #i4031003#長…）：原樣保留且不 panic
+        assert_eq!(
+            substitute_refs("#i4031003#長這樣的鏡子。", &names),
+            "#i4031003#長這樣的鏡子。"
+        );
     }
 
     #[test]
@@ -762,19 +837,24 @@ mod tests {
                     subtree("1", vec![int_leaf("id", 3000)]),
                     // 缺 id 的條目略過
                     subtree("2", vec![int_leaf("count", 5)]),
+                    // 抽取標記 prop（隨機權重 / -1 自選）
+                    subtree("3", vec![int_leaf("id", 4000), int_leaf("prop", -1)]),
                 ],
             )],
         );
         let mut names = HashMap::new();
         names.insert(2002u32, "紅色藥水".to_string());
         let refs = item_refs(Some(&stage), &names);
-        assert_eq!(refs.len(), 2);
+        assert_eq!(refs.len(), 3);
         assert_eq!(refs[0].id, 2002);
         assert_eq!(refs[0].count, 10);
         assert_eq!(refs[0].name.as_deref(), Some("紅色藥水"));
+        assert_eq!(refs[0].prop, None);
         assert_eq!(refs[1].id, 3000);
         assert_eq!(refs[1].count, 1);
         assert_eq!(refs[1].name, None);
+        assert_eq!(refs[2].id, 4000);
+        assert_eq!(refs[2].prop, Some(-1));
         assert!(item_refs(None, &names).is_empty());
     }
 

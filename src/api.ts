@@ -189,11 +189,13 @@ export interface QuestSummary {
   nextQuestId: string | null;
 }
 
-/** 任務相關的道具參照（count 負值表示交付/消耗）。 */
+/** 任務相關的道具參照（count 負值表示交付/消耗）。
+ *  prop 是抽取標記：正值＝隨機獲得（值為權重），-1＝自選一項，null＝固定給予。 */
 export interface QuestItemRef {
   id: number;
   count: number;
   name: string | null;
+  prop: number | null;
 }
 
 /** 任務需求怪物參照。 */

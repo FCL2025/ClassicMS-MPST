@@ -4219,7 +4219,7 @@ button.monster-drop:focus-visible {
 
 .quest-dialogue {
   display: flex;
-  width: min(560px, 100%);
+  width: min(980px, 100%);
   min-height: 0;
   flex: 1 1 auto;
   flex-direction: column;
@@ -4268,14 +4268,64 @@ button.monster-drop:focus-visible {
   transform: rotate(45deg);
 }
 
+/* 字級隨視窗寬略為放大，寬螢幕下台詞更清楚。 */
 .quest-bubble-text p {
   margin: 0;
   color: #1c2a3d;
-  font-size: 0.78rem;
+  font-size: clamp(0.78rem, 0.58rem + 0.55vw, 1rem);
   line-height: 1.7;
 }
 
 .quest-bubble-text mark {
+  background: none;
+  color: #1f66d1;
+  font-weight: 700;
+}
+
+/* 玩家台詞（#L<n># 行）：淡綠底、靠右，跟 NPC 的白底氣泡區分。 */
+.quest-bubble.is-player {
+  align-self: flex-end;
+  border-color: #b8cf9e;
+  background: #eef7e2;
+}
+
+.quest-bubble.is-player::before {
+  right: 28px;
+  left: auto;
+  border-color: #b8cf9e;
+  background: #eef7e2;
+}
+
+/* 氣泡白底上預設的反白色會讓文字消失，改成深藍底白字。 */
+.quest-bubble ::selection {
+  background: #2b5cb8;
+  color: #ffffff;
+}
+
+/* 台詞內嵌的道具 icon（#t<id># / #i<id># 段）。 */
+.quest-inline-item {
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  margin: 0 1px;
+  place-items: center;
+  vertical-align: middle;
+}
+
+.quest-inline-item img {
+  max-width: 22px;
+  max-height: 22px;
+  image-rendering: pixelated;
+}
+
+.quest-inline-item > span {
+  color: #7c8ca0;
+  font-size: 0.62rem;
+}
+
+/* 台詞內嵌的道具名稱（#t<id># 段）：強調色 + 底線提示可 hover。 */
+.quest-inline-item-name {
+  border-bottom: 1px dotted #1f66d1;
   background: none;
   color: #1f66d1;
   font-weight: 700;
@@ -4487,10 +4537,6 @@ button.monster-drop:focus-visible {
   padding: 3px 8px 3px 3px;
 }
 
-.quest-item-chip.is-deliver {
-  border-style: dashed;
-}
-
 .quest-item-icon {
   display: grid;
   width: 28px;
@@ -4515,8 +4561,15 @@ button.monster-drop:focus-visible {
   white-space: nowrap;
 }
 
-.quest-item-chip.is-deliver .quest-item-count {
-  color: var(--warning);
+/* 抽取機率標籤（隨機獲得群組）。 */
+.quest-item-chance {
+  border-radius: var(--radius-sm);
+  background: var(--selection);
+  padding: 1px 6px;
+  color: var(--accent);
+  font-size: 0.62rem;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .quest-rewards {
@@ -4553,11 +4606,14 @@ button.monster-drop:focus-visible {
   font-size: 0.68rem;
 }
 
-/* 道具 hover tooltip（比照 monster-drop-tooltip，向上長）。 */
+/* 道具 hover tooltip（比照 monster-drop-tooltip，向上長）。
+   pointer-events: none：滑鼠往上移進 tooltip 區域時不會觸發 chip 的 mouseleave，
+   避免 tooltip 反覆消失又出現的閃爍。 */
 .quest-item-tooltip {
   position: fixed;
   z-index: 60;
   transform: translateY(-100%);
+  pointer-events: none;
 }
 
 /* 有遊戲外框時內容是白底，文字改固定深色。 */
@@ -4607,8 +4663,9 @@ button.monster-drop:focus-visible {
   color: #7c8ca0;
 }
 
-.quest-log.has-frame .quest-item-chip.is-deliver .quest-item-count {
-  color: #b26a00;
+.quest-log.has-frame .quest-item-chance {
+  background: #dbe7f7;
+  color: #1f66d1;
 }
 
 .quest-log.has-frame .quest-reward {

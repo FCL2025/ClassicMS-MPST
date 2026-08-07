@@ -92,18 +92,20 @@ function loadQuestData(): Promise<Map<string, QuestStrings>> {
   return questDataCache;
 }
 
-/** 解析 `{id: {name: ...}}` 字串表成 id → 名稱；失敗時回空表（對齊 monster.ts）。 */
-async function loadNames(path: string): Promise<Map<number, string>> {
+/** 解析 `{id: {<key>: ...}}` 字串表成 id → 名稱；失敗時回空表（對齊 monster.ts）。
+ *  地圖表的名稱鍵是 mapName，其餘（Npc/Mob/Pet）是 name。 */
+async function loadNames(path: string, nameKey = "name"): Promise<Map<number, string>> {
   const table = new Map<number, string>();
   try {
     const raw = JSON.parse(stripBom(await loadTextAsset(path))) as Record<
       string,
-      { name?: unknown }
+      Record<string, unknown>
     >;
     for (const [key, value] of Object.entries(raw)) {
       const id = Number(key);
-      if (!Number.isInteger(id) || typeof value?.name !== "string") continue;
-      table.set(id, value.name);
+      const name = value?.[nameKey];
+      if (!Number.isInteger(id) || typeof name !== "string") continue;
+      table.set(id, name);
     }
   } catch {
     // 資料集缺字串表時視為空表。
@@ -116,6 +118,8 @@ interface QuestNameTables {
   mobs: Map<number, string>;
   /** 道具名稱（Item 為主，Pet 只補 Item 缺的 id，對齊 monster.ts）。 */
   items: Map<number, string>;
+  /** 地圖名稱（String/TW/Map 的 mapName）。 */
+  maps: Map<number, string>;
 }
 
 let nameTablesCache: Promise<QuestNameTables> | null = null;
@@ -123,18 +127,19 @@ let nameTablesCache: Promise<QuestNameTables> | null = null;
 function loadNameTables(): Promise<QuestNameTables> {
   if (!nameTablesCache) {
     nameTablesCache = (async () => {
-      const [itemEntries, pets, mobs, npcs] = await Promise.all([
+      const [itemEntries, pets, mobs, npcs, maps] = await Promise.all([
         loadItemNameTable(),
         loadNames("String/TW/Pet"),
         loadNames("String/TW/Mob"),
         loadNames("String/TW/Npc"),
+        loadNames("String/TW/Map", "mapName"),
       ]);
       const items = new Map<number, string>();
       for (const [id, entry] of itemEntries) items.set(id, entry.name);
       for (const [id, name] of pets) {
         if (!items.has(id)) items.set(id, name);
       }
-      return { npcs, mobs, items };
+      return { npcs, mobs, items, maps };
     })();
     nameTablesCache.catch(() => {
       nameTablesCache = null;
@@ -201,7 +206,12 @@ function itemRefs(node: TreeNode | null, names: Map<number, string>): QuestItemR
   for (const child of childEntries(node)) {
     const id = propI64(child, "id");
     if (id == null) continue;
-    refs.push({ id, count: propI64(child, "count") ?? 1, name: names.get(id) ?? null });
+    refs.push({
+      id,
+      count: propI64(child, "count") ?? 1,
+      name: names.get(id) ?? null,
+      prop: propI64(child, "prop"),
+    });
   }
   return refs;
 }
@@ -243,11 +253,12 @@ function speechLines(node: TreeNode | null, say: Record<string, string>): string
   return lines;
 }
 
-/** 台詞中的 #p<id># NPC 引用換成 NPC 名字（查不到保留原標記，前端會去掉）。 */
-function substituteNpcRefs(text: string, npcs: Map<number, string>): string {
-  return text.replace(/#p(\d+)#/g, (raw, digits: string) => {
-    const name = npcs.get(Number(digits));
-    return name ?? raw;
+/** 台詞中的引用標記換成名字：#p<id># NPC、#o<id># 怪物、#m<id># 地圖
+ *  （查不到保留原標記，前端會去掉）。 */
+function substituteRefs(text: string, names: QuestNameTables): string {
+  return text.replace(/#([pom])(\d+)#/g, (raw, kind: string, digits: string) => {
+    const table = kind === "p" ? names.npcs : kind === "o" ? names.mobs : names.maps;
+    return table.get(Number(digits)) ?? raw;
   });
 }
 
@@ -260,7 +271,7 @@ function buildStage(
   say: Record<string, string>,
 ): QuestDialogueStage {
   const stop = stageNode ? prop(stageNode, "stop") : null;
-  const sub = (lines: string[]) => lines.map((text) => substituteNpcRefs(text, names.npcs));
+  const sub = (lines: string[]) => lines.map((text) => substituteRefs(text, names));
   return {
     npcId,
     npcName: npcId != null ? (names.npcs.get(npcId) ?? null) : null,
@@ -341,7 +352,7 @@ export async function getQuestDetail(questId: string): Promise<QuestDetail> {
     const key = asStr(child.value);
     if (key == null) continue;
     const text = infoStrings[key];
-    if (text != null && text !== "") info[child.name] = substituteNpcRefs(text, names.npcs);
+    if (text != null && text !== "") info[child.name] = substituteRefs(text, names);
   }
 
   return {

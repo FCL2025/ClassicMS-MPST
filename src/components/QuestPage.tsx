@@ -14,7 +14,7 @@ import {
 } from "../api";
 import { loadClassicFrame } from "./classicFrame";
 import { DropItemTooltip, ItemTooltip } from "./ItemTooltip";
-import { parseMapleText } from "./skillJobs";
+import { parseMapleText, type TextSegment } from "./skillJobs";
 
 // NPC 立繪走既有 get_image（Npc/<7 碼 id>/stand/0），整個 session 快取。
 const npcPortraitCache = new Map<number, Promise<string | null>>();
@@ -57,19 +57,122 @@ function NpcPortrait({ npcId, name }: { npcId: number | null; name: string | nul
   );
 }
 
-/** 楓之谷字串逐行渲染（#c…# / #b…#k 片段用強調色）。 */
-function MapleText({ raw, className }: { raw: string; className?: string }) {
+/** 台詞內嵌的道具 icon（#t<id># / #i<id># 段）：懶載入 + hover tooltip。 */
+function QuestInlineItem({
+  id,
+  onHover,
+  onLeave,
+}: {
+  id: number;
+  onHover?: (itemId: number, event: React.MouseEvent, name: string | null) => void;
+  onLeave?: () => void;
+}) {
+  const [icon, setIcon] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    void getMobDropIcon(id).then((base64) => {
+      if (active && base64) setIcon(`data:image/png;base64,${base64}`);
+    });
+    return () => {
+      active = false;
+    };
+  }, [id]);
+  return (
+    <span
+      className="quest-inline-item"
+      onMouseEnter={onHover ? (event) => onHover(id, event, null) : undefined}
+      onMouseLeave={onLeave}
+    >
+      {icon ? <img src={icon} alt="" draggable={false} /> : <span>#{id}</span>}
+    </span>
+  );
+}
+
+/** 台詞內嵌的道具名稱（#t<id># 段）：名稱懶載入 + hover tooltip。 */
+const inlineItemNameCache = new Map<number, Promise<string | null>>();
+
+function loadInlineItemName(id: number): Promise<string | null> {
+  let cached = inlineItemNameCache.get(id);
+  if (!cached) {
+    cached = getItemTooltipById(id)
+      .then((tip) => tip?.title ?? null)
+      .catch(() => null);
+    inlineItemNameCache.set(id, cached);
+  }
+  return cached;
+}
+
+function QuestInlineItemName({
+  id,
+  onHover,
+  onLeave,
+}: {
+  id: number;
+  onHover?: (itemId: number, event: React.MouseEvent, name: string | null) => void;
+  onLeave?: () => void;
+}) {
+  const [name, setName] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    void loadInlineItemName(id).then((loaded) => {
+      if (active) setName(loaded);
+    });
+    return () => {
+      active = false;
+    };
+  }, [id]);
+  return (
+    <mark
+      className="quest-inline-item-name"
+      onMouseEnter={onHover ? (event) => onHover(id, event, name) : undefined}
+      onMouseLeave={onLeave}
+    >
+      {name ?? `#${id}`}
+    </mark>
+  );
+}
+
+/** 台詞文字段渲染（強調 / 道具 icon / 道具名稱）。 */
+function renderSegment(
+  segment: TextSegment,
+  key: number,
+  onItemHover?: (itemId: number, event: React.MouseEvent, name: string | null) => void,
+  onItemLeave?: () => void,
+) {
+  if (segment.itemId != null) {
+    return <QuestInlineItem key={key} id={segment.itemId} onHover={onItemHover} onLeave={onItemLeave} />;
+  }
+  if (segment.itemNameId != null) {
+    return (
+      <QuestInlineItemName key={key} id={segment.itemNameId} onHover={onItemHover} onLeave={onItemLeave} />
+    );
+  }
+  return segment.accent ? (
+    <mark key={key}>{segment.text}</mark>
+  ) : (
+    <span key={key}>{segment.text}</span>
+  );
+}
+
+/** 楓之谷字串逐行渲染（#c…# / #b…#k 片段用強調色；道具段渲染 icon / 名稱）。 */
+function MapleText({
+  raw,
+  className,
+  onItemHover,
+  onItemLeave,
+}: {
+  raw: string;
+  className?: string;
+  onItemHover?: (itemId: number, event: React.MouseEvent, name: string | null) => void;
+  onItemLeave?: () => void;
+}) {
   return (
     <div className={className}>
       {parseMapleText(raw).map((line, index) => (
         <p key={index}>
           {line.segments.length > 0
             ? line.segments.map((segment, segmentIndex) =>
-                segment.accent ? (
-                  <mark key={segmentIndex}>{segment.text}</mark>
-                ) : (
-                  <span key={segmentIndex}>{segment.text}</span>
-                ),
+                renderSegment(segment, segmentIndex, onItemHover, onItemLeave),
               )
             : " "}
         </p>
@@ -78,8 +181,17 @@ function MapleText({ raw, className }: { raw: string; className?: string }) {
   );
 }
 
-/** 對話舞台：台詞逐段顯示，播完有 ask 接 ask，再依 yes/no 顯示接受 / 婉拒。 */
-function DialogueView({ stage }: { stage: QuestDialogueStage }) {
+/** 對話舞台：台詞逐段顯示，播完有 ask 接 ask，再依 yes/no 顯示接受 / 婉拒。
+ *  一段台詞內的每個換行各成一個泡泡；行首 #L<n># 是玩家台詞（不同底色、靠右）。 */
+function DialogueView({
+  stage,
+  onItemHover,
+  onItemLeave,
+}: {
+  stage: QuestDialogueStage;
+  onItemHover?: (itemId: number, event: React.MouseEvent, name: string | null) => void;
+  onItemLeave?: () => void;
+}) {
   const script = useMemo(() => [...stage.lines, ...stage.ask], [stage]);
   const hasChoice = stage.yes.length > 0 || stage.no.length > 0;
   const [step, setStep] = useState(script.length > 0 ? 1 : 0);
@@ -97,21 +209,39 @@ function DialogueView({ stage }: { stage: QuestDialogueStage }) {
   const awaitingChoice = !playing && hasChoice && choice === null;
   const playingResponse = choice !== null && respStep < responseLines.length;
 
+  const renderBubbles = (texts: string[], shown: number, keyPrefix: string) =>
+    texts.slice(0, shown).flatMap((text, textIndex) =>
+      parseMapleText(text)
+        // \r\n 之類的連續換行會產生空行，不渲染成空泡泡。
+        .filter(
+          (line) =>
+            line.segments.some(
+              (s) => s.text.trim() !== "" || s.itemId != null || s.itemNameId != null,
+            ),
+        )
+        .map((line, lineIndex) => (
+          <div
+            className={`quest-bubble${line.player ? " is-player" : ""}`}
+            key={`${keyPrefix}${textIndex}-${lineIndex}`}
+          >
+            <div className="quest-bubble-text">
+              <p>
+                {line.segments.length > 0
+                  ? line.segments.map((segment, segmentIndex) =>
+                      renderSegment(segment, segmentIndex, onItemHover, onItemLeave),
+                    )
+                  : " "}
+              </p>
+            </div>
+          </div>
+        )),
+    );
+
   return (
     <div className="quest-dialogue-inner">
       <div className="quest-bubble-scroll" ref={scrollRef}>
-        {script.slice(0, step).map((line, index) => (
-          <div className="quest-bubble" key={index}>
-            <MapleText raw={line} className="quest-bubble-text" />
-          </div>
-        ))}
-        {choice !== null
-          ? responseLines.slice(0, respStep).map((line, index) => (
-              <div className="quest-bubble" key={`r${index}`}>
-                <MapleText raw={line} className="quest-bubble-text" />
-              </div>
-            ))
-          : null}
+        {renderBubbles(script, step, "")}
+        {choice !== null ? renderBubbles(responseLines, respStep, "r") : null}
         {script.length === 0 && !hasChoice ? (
           <p className="quest-dialogue-empty">此階段沒有對話資料</p>
         ) : null}
@@ -214,13 +344,15 @@ function isGear(itemId: number): boolean {
   return Math.floor(itemId / 1_000_000) === 1;
 }
 
-/** 需求/獎勵道具：icon 懶載入 + hover tooltip；count 負值標「交付」。 */
+/** 需求/獎勵道具：icon 懶載入 + hover tooltip；chance 為抽取機率標籤。 */
 function QuestItemChip({
   item,
+  chance,
   onHover,
   onLeave,
 }: {
   item: QuestItemRef;
+  chance?: string;
   onHover: (itemId: number, event: React.MouseEvent, name: string | null) => void;
   onLeave: () => void;
 }) {
@@ -234,10 +366,9 @@ function QuestItemChip({
       active = false;
     };
   }, [item.id]);
-  const delivered = item.count < 0;
   return (
     <span
-      className={`quest-item-chip${delivered ? " is-deliver" : ""}`}
+      className="quest-item-chip"
       onMouseEnter={(event) => onHover(item.id, event, item.name)}
       onMouseLeave={onLeave}
     >
@@ -245,12 +376,17 @@ function QuestItemChip({
         {icon ? <img src={icon} alt="" draggable={false} /> : null}
       </span>
       <span className="quest-item-name">{item.name ?? item.id}</span>
-      <span className="quest-item-count">
-        {delivered ? "交付" : "×"}
-        {Math.abs(item.count)}
-      </span>
+      <span className="quest-item-count">×{item.count}</span>
+      {chance ? <span className="quest-item-chance">{chance}</span> : null}
     </span>
   );
+}
+
+/** 抽取機率標籤：整數不帶小數（50%），其餘一位小數（6.3%）。 */
+function chanceLabel(prop: number, weightTotal: number): string {
+  if (weightTotal <= 0) return "";
+  const pct = (prop / weightTotal) * 100;
+  return `${Number.isInteger(pct) ? pct : pct.toFixed(1)}%`;
 }
 
 // 任務資料庫：左書架（系列分組）/ 中 NPC 對話舞台 / 右任務日誌；第一次切到此頁才載入。
@@ -377,6 +513,17 @@ export function QuestPage({
     return siblings.length > 1 ? orderChapters(siblings) : [];
   }, [book, detail?.parent]);
 
+  // 獎勵道具分組：負 count（交付）與需求重複不顯示；prop>0 隨機抽取
+  // （值為權重，等值即平均分配）、prop=-1 自選一項、無 prop 固定給予。
+  const rewardGroups = useMemo(() => {
+    const items = (detail?.rewards.items ?? []).filter((item) => item.count > 0);
+    const random = items.filter((item) => item.prop != null && item.prop > 0);
+    const choice = items.filter((item) => item.prop === -1);
+    const fixed = items.filter((item) => item.prop == null);
+    const weightTotal = random.reduce((sum, item) => sum + (item.prop ?? 0), 0);
+    return { random, choice, fixed, weightTotal, total: items.length };
+  }, [detail]);
+
   const chapterIndex = chapters.findIndex((quest) => quest.id === selectedId);
 
   // 進行中對話（完成 NPC 的 stop/lost 台詞）；有內容才出現分段。
@@ -493,15 +640,6 @@ export function QuestPage({
             >
               接受任務
             </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={stageTab === "end"}
-              className={stageTab === "end" ? "is-active" : ""}
-              onClick={() => setStageTab("end")}
-            >
-              完成任務
-            </button>
             {progressStage ? (
               <button
                 type="button"
@@ -513,6 +651,15 @@ export function QuestPage({
                 進行中對話
               </button>
             ) : null}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={stageTab === "end"}
+              className={stageTab === "end" ? "is-active" : ""}
+              onClick={() => setStageTab("end")}
+            >
+              完成任務
+            </button>
           </div>
           {detailError ? (
             <p className="quest-page-status">任務資料載入失敗：{detailError}</p>
@@ -530,7 +677,7 @@ export function QuestPage({
               </div>
               <div className="quest-dialogue" key={`${detail.id}:${stageTab}`}>
                 {currentStage ? (
-                  <DialogueView stage={currentStage} />
+                  <DialogueView stage={currentStage} onItemHover={showTip} onItemLeave={hideTip} />
                 ) : (
                   <p className="quest-dialogue-empty">此階段沒有對話資料</p>
                 )}
@@ -592,7 +739,13 @@ export function QuestPage({
                 <section className="quest-log-section">
                   <h3>任務簡介</h3>
                   {Object.entries(detail.info).map(([key, text]) => (
-                    <MapleText key={key} raw={text} className="quest-log-text" />
+                    <MapleText
+                      key={key}
+                      raw={text}
+                      className="quest-log-text"
+                      onItemHover={showTip}
+                      onItemLeave={hideTip}
+                    />
                   ))}
                 </section>
               ) : null}
@@ -689,9 +842,9 @@ export function QuestPage({
                     </div>
                   ) : null}
                 </dl>
-                {detail.rewards.items.length > 0 ? (
+                {rewardGroups.fixed.length > 0 ? (
                   <div className="quest-item-grid">
-                    {detail.rewards.items.map((item, index) => (
+                    {rewardGroups.fixed.map((item, index) => (
                       <QuestItemChip
                         key={`a${item.id}-${index}`}
                         item={item}
@@ -699,6 +852,37 @@ export function QuestPage({
                         onLeave={hideTip}
                       />
                     ))}
+                  </div>
+                ) : null}
+                {rewardGroups.random.length > 0 ? (
+                  <div className="quest-log-row">
+                    <span className="quest-log-label">隨機獲得</span>
+                    <div className="quest-item-grid">
+                      {rewardGroups.random.map((item, index) => (
+                        <QuestItemChip
+                          key={`r${item.id}-${index}`}
+                          item={item}
+                          chance={chanceLabel(item.prop ?? 0, rewardGroups.weightTotal)}
+                          onHover={showTip}
+                          onLeave={hideTip}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {rewardGroups.choice.length > 0 ? (
+                  <div className="quest-log-row">
+                    <span className="quest-log-label">自選一項</span>
+                    <div className="quest-item-grid">
+                      {rewardGroups.choice.map((item, index) => (
+                        <QuestItemChip
+                          key={`c${item.id}-${index}`}
+                          item={item}
+                          onHover={showTip}
+                          onLeave={hideTip}
+                        />
+                      ))}
+                    </div>
                   </div>
                 ) : null}
                 {detail.rewards.nextQuest ? (
@@ -719,7 +903,7 @@ export function QuestPage({
                 {detail.rewards.exp == null &&
                 detail.rewards.mesos == null &&
                 detail.rewards.popularity == null &&
-                detail.rewards.items.length === 0 &&
+                rewardGroups.total === 0 &&
                 !detail.rewards.nextQuest ? (
                   <p className="quest-log-empty">沒有獎勵資料</p>
                 ) : null}

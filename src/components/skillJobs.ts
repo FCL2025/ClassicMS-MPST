@@ -214,22 +214,37 @@ export const HIDDEN_PROPS = new Set(["hs"]);
 export interface TextSegment {
   text: string;
   accent: boolean;
+  /** 道具 icon 段（`#i4031003#`）：text 為空，由呼叫端渲染 icon。 */
+  itemId?: number;
+  /** 道具名稱段（`#t2022000#`）：text 為空，由呼叫端渲染名稱。 */
+  itemNameId?: number;
 }
 
 export interface MapleLine {
   segments: TextSegment[];
+  /** 玩家台詞（`#L0#` 等標記，可跨 `#b` 等樣式碼、以 `#l` 收尾）；缺省為 NPC 台詞。 */
+  player?: boolean;
 }
 
 /**
- * 解析楓之谷字串：換行是字面 `\n` 兩字元（偶爾 `\#` 是轉義的 #）。
- * 標記處理：`#c…#` 自足強調、`#b…#k` 區間強調（任務文本常用）、
- * `#p2101#` / `#i4031003#` / `#o…#` / `#m…#` 引用標記不查表直接去掉；
+ * 解析楓之谷字串：換行是字面 `\n` / `\r` 兩字元（偶爾夾帶真正的 CR 字元）。
+ * 標記處理：`#c…#` 自足強調（純數字 `#c4000015#` 是遊戲的「目前持有數」
+ * 小工具，靜態檢視無意義，直接去掉）、`#b…#k` / `#e…#n` / `#r…#k` 區間強調、
+ * `#L<n>#…#l` 玩家台詞（去掉標記、整行標 player）、
+ * `#i<id>#` 道具 icon 段、`#t<id>#` 道具名稱段（由呼叫端渲染）、
+ * `#p2101#` / `#o…#` / `#m…#` 引用標記不查表直接去掉（後端已代換名字）；
  * 其他 #token（如 #prop）原樣保留。
  */
 export function parseMapleText(raw: string): MapleLine[] {
+  // 換行標記是字面 `\n` / `\r` 兩字元（偶爾夾帶真正的 CR 字元，一併視為換行）；
   // 轉義的 \# 先換成 NUL 佔位，避免被當成標記起點，最後再還原。
-  const normalized = raw.replace(/\\n/g, "\n").replace(/\\#/g, "\0");
-  return normalized.split("\n").map((line) => ({ segments: parseMapleLine(line) }));
+  const normalized = raw.replace(/\\[nr]|\r/g, "\n").replace(/\\#/g, "\0");
+  return normalized.split("\n").map((line) => {
+    // 玩家台詞標記 #L<n>#：可能在行首，也可能前面夾 #b 之類的樣式碼。
+    const playerMark = /^(?:#[bkre])*#L\d+#/.exec(line);
+    const segments = parseMapleLine(playerMark ? line.slice(playerMark[0].length) : line);
+    return playerMark ? { segments, player: true } : { segments };
+  });
 }
 
 function parseMapleLine(line: string): TextSegment[] {
@@ -244,21 +259,35 @@ function parseMapleLine(line: string): TextSegment[] {
   };
   let i = 0;
   while (i < line.length) {
-    // 區間強調標記（不自閉合，文字直接接在後面）。
-    if (line.startsWith("#b", i)) {
+    // 區間強調標記（不自閉合，文字直接接在後面）：#b…#k、#e…#n、#r…#k。
+    if (line.startsWith("#b", i) || line.startsWith("#e", i) || line.startsWith("#r", i)) {
       flush();
       accent = true;
       i += 2;
       continue;
     }
-    if (line.startsWith("#k", i)) {
+    if (line.startsWith("#k", i) || line.startsWith("#n", i)) {
       flush();
       accent = false;
       i += 2;
       continue;
     }
-    // 引用標記（NPC/道具/怪物/地圖）：不查表，整個去掉。
-    const ref = /^#[piom]\d+#/.exec(line.slice(i));
+    // #l 是 #L<n># 玩家台詞的收尾標記，無顯示意義。
+    if (line.startsWith("#l", i)) {
+      i += 2;
+      continue;
+    }
+    // 道具 icon（#i<id>#）與道具名稱（#t<id>#）：結尾偶爾是冒號，轉對應段。
+    const item = /^#([it])(\d+)[:#]/.exec(line.slice(i));
+    if (item) {
+      flush();
+      if (item[1] === "i") segments.push({ text: "", accent, itemId: Number(item[2]) });
+      else segments.push({ text: "", accent, itemNameId: Number(item[2]) });
+      i += item[0].length;
+      continue;
+    }
+    // 引用標記（NPC/怪物/地圖）：後端已代換名字；殘留的不查表直接去掉。
+    const ref = /^#[pom]\d+#/.exec(line.slice(i));
     if (ref) {
       i += ref[0].length;
       continue;
@@ -267,10 +296,12 @@ function parseMapleLine(line: string): TextSegment[] {
       const end = line.indexOf("#", i + 1);
       if (end > i + 1) {
         const token = line.slice(i + 1, end);
-        // 自足強調標記 #c…#。
+        // 自足強調標記 #c…#；純數字（#c4000015#）是遊戲的持有數小工具，去掉。
         if (token.startsWith("c")) {
           flush();
-          if (token.length > 1) segments.push({ text: token.slice(1), accent: true });
+          if (token.length > 1 && !/^c\d+$/.test(token)) {
+            segments.push({ text: token.slice(1), accent: true });
+          }
           i = end + 1;
           continue;
         }
