@@ -1,10 +1,10 @@
 // Hosted 版 api 委派層：與 src/api.ts / api.web.ts 完全相同的 export 介面，
 // 內部依「資料來源」在兩個後端之間 runtime 切換——
-//   cloud（預設）：./hosted/backend，純 HTTP fetch 預處理資料集（R2/Workers）
-//   local：./api.web，WASM worker 讀使用者本機資料夾（與 dist-web 同源）
+//   cloud：./hosted/backend，純 HTTP fetch 預處理資料集（R2/Workers）
+//   local（預設）：./api.web，WASM worker 讀使用者本機資料夾（與 dist-web 同源）
 // vite.config.hosted.ts 用 alias 把所有 "./api" / "../api" import 換成本檔。
 //
-// 來源偏好存 localStorage（msclassic-data-source），缺省 cloud；
+// 來源偏好存 localStorage（msclassic-data-source），缺省 local；
 // 由 App.tsx 右上角的來源切換器透過 getDataSource / setDataSource 操作。
 
 // 舊版曾以 Service Worker 永久快取 /data/，損壞的 JSON 也會被持續回放。
@@ -128,9 +128,9 @@ export type DataSource = "cloud" | "local";
 
 const DATA_SOURCE_KEY = "msclassic-data-source";
 
-/** 目前的資料來源；localStorage 沒記錄時預設雲端。 */
+/** 目前的資料來源；localStorage 沒記錄時預設本機資料夾。 */
 export const getDataSource = (): DataSource =>
-  window.localStorage.getItem(DATA_SOURCE_KEY) === "local" ? "local" : "cloud";
+  window.localStorage.getItem(DATA_SOURCE_KEY) === "cloud" ? "cloud" : "local";
 
 export const setDataSource = (source: DataSource): void => {
   window.localStorage.setItem(DATA_SOURCE_KEY, source);

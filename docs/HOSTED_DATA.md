@@ -104,7 +104,7 @@ R2 上傳用 `wrangler r2 object put` 或 rclone（萬級檔案建議 rclone 分
 - [ ] 列表預取：瀏覽某分類時背景預取該分類其餘 sheet
 - [x] 保留「讀本機資料夾」作為進階選項（可用自己版本的資料）：
       `api.hosted.ts` 改為雙後端委派層（雲端 `hosted/backend.ts` + 本機 `api.web.ts`），
-      header 右上角「雲端資料 / 本機資料夾」分段切換器，偏好存 localStorage、預設雲端
+      header 右上角「雲端資料 / 本機資料夾」分段切換器，偏好存 localStorage、預設本機資料夾
 
 ## UX 目標
 

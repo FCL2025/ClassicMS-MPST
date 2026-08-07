@@ -94,7 +94,7 @@ export default function App() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<ChildEntry | null>(null);
   const [openInfo, setOpenInfo] = useState<OpenInfo | null>(null);
-  // 資料來源（hosted 版才有切換器；偏好存 localStorage，預設雲端）。
+  // 資料來源（hosted 版才有切換器；偏好存 localStorage，預設本機資料夾）。
   const [dataSource, setDataSourceState] = useState<DataSource>(() => getDataSource());
   const [, setDataDir] = useState<string | null>(null);
   const [dataError, setDataError] = useState<string | null>(null);
