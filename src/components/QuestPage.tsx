@@ -154,21 +154,35 @@ function renderSegment(
   );
 }
 
-/** 楓之谷字串逐行渲染（#c…# / #b…#k 片段用強調色；道具段渲染 icon / 名稱）。 */
+/** 楓之谷字串逐行渲染（#c…# / #b…#k 片段用強調色；道具段渲染 icon / 名稱）。
+ *  dropTrackerLines：去掉整行只有道具引用與數量（/100 之類）的遊戲內追蹤行，
+ *  給任務簡介用（需求/獎勵在結構化區塊已有，不重複顯示）。 */
 function MapleText({
   raw,
   className,
   onItemHover,
   onItemLeave,
+  dropTrackerLines = false,
 }: {
   raw: string;
   className?: string;
   onItemHover?: (itemId: number, event: React.MouseEvent, name: string | null) => void;
   onItemLeave?: () => void;
+  dropTrackerLines?: boolean;
 }) {
+  const lines = parseMapleText(raw).filter(
+    (line) =>
+      !dropTrackerLines ||
+      line.segments.some(
+        (segment) =>
+          segment.itemId == null &&
+          segment.itemNameId == null &&
+          !/^[\s\d/:：]*$/.test(segment.text),
+      ),
+  );
   return (
     <div className={className}>
-      {parseMapleText(raw).map((line, index) => (
+      {lines.map((line, index) => (
         <p key={index}>
           {line.segments.length > 0
             ? line.segments.map((segment, segmentIndex) =>
@@ -745,6 +759,7 @@ export function QuestPage({
                       className="quest-log-text"
                       onItemHover={showTip}
                       onItemLeave={hideTip}
+                      dropTrackerLines
                     />
                   ))}
                 </section>

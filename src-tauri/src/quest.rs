@@ -654,7 +654,9 @@ fn load_quest_data(service: &DataService) -> QuestDataTables {
                 };
                 if key == "parent" {
                     parent = Some(text.to_string());
-                } else {
+                } else if key.bytes().all(|b| b.is_ascii_digit()) {
+                    // 只收數字階段鍵；demandSummary / rewardSummary 是遊戲內
+                    // 追蹤摘要（需求/獎勵在結構化區塊已有），不重複顯示。
                     info.insert(key.clone(), text.to_string());
                 }
             }

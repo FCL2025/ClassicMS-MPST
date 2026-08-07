@@ -46,8 +46,10 @@ export function getQuestBook(): Promise<QuestSummary[]> {
 
 interface QuestStrings {
   name: string | null;
-  /** Info 子表：數字鍵是故事文、"parent" 是系列名。 */
+  /** Info 子表的數字鍵（故事文階段）；parent / demandSummary / rewardSummary 不收。 */
   info: Record<string, string>;
+  /** Info 子表的 parent（系列名）。 */
+  parent: string | null;
   /** Say 子表：Say.img 樹的文字鍵 → 台詞實文。 */
   say: Record<string, string>;
 }
@@ -79,9 +81,17 @@ function loadQuestData(): Promise<Map<string, QuestStrings>> {
             }
             return out;
           };
+          const rawInfo = stringsOnly(entry.Info);
+          // info 只收數字階段鍵；parent 另存，demandSummary / rewardSummary
+          // 是遊戲內追蹤摘要（需求/獎勵在結構化區塊已有），不重複顯示。
+          const info: Record<string, string> = {};
+          for (const [key, text] of Object.entries(rawInfo)) {
+            if (/^\d+$/.test(key)) info[key] = text;
+          }
           table.set(id, {
             name: typeof entry.name === "string" ? entry.name : null,
-            info: stringsOnly(entry.Info),
+            info,
+            parent: rawInfo.parent ?? null,
             say: stringsOnly(entry.Say),
           });
         }
@@ -358,7 +368,7 @@ export async function getQuestDetail(questId: string): Promise<QuestDetail> {
   return {
     id: checkEntry?.name ?? sayEntry?.name ?? actEntry?.name ?? questId,
     name: strings?.name ?? null,
-    parent: infoStrings.parent ?? null,
+    parent: strings?.parent ?? null,
     area: propI64(infoEntry, "area"),
     levelMin: propI64(check0, "lvmin"),
     levelMax: propI64(check0, "lvmax"),

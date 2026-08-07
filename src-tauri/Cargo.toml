@@ -1,6 +1,6 @@
 [package]
 name = "msclassic"
-version = "0.27.4"
+version = "0.27.5"
 edition = "2021"
 description = "楓之谷經典版 Unity 資料瀏覽、圖片預覽與 JSON/PNG/XML 匯出工具"
 default-run = "msclassic"
