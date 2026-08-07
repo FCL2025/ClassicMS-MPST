@@ -32,6 +32,18 @@ function reqTone(value: number, highlightLevel = false): string {
 /** 描述正規化：資料裡的換行是字面 \n（對齊 monster.ts / skillJobs.ts）。 */
 const normalizeDesc = (text: string): string => text.replace(/\\n/g, "\n");
 
+/** 衝裝備卷軸：名稱含「卷軸＋%數」且描述有成功率。 */
+const isUpgradeScroll = (title: string, desc: string): boolean =>
+  title.includes("卷軸") && /\d+%/.test(title) && desc.includes("成功率");
+
+/** tooltip 描述顯示用文字：先還原字面 \n 換行；
+ *  衝裝備卷軸再把逗號／頓號分隔的屬性逐條換行，方便檢視（畫面與 PNG 匯出共用）。 */
+export const formatItemDescription = (title: string, desc: string): string => {
+  const normalized = normalizeDesc(desc);
+  if (!isUpgradeScroll(title, normalized)) return normalized;
+  return normalized.replace(/[，,、]/g, "\n");
+};
+
 /** 右鍵「儲存成 PNG」選單（裝備與非裝備 tooltip 共用）：
  *  選單開著時，點外面、Esc、視窗失焦或縮放就關掉。 */
 function useSavePngMenu(saveAsPng: () => void) {
@@ -120,7 +132,9 @@ export function DropItemTooltip({ details }: { details: ItemTooltipData }) {
       }
     : undefined;
 
-  const description = details.description ? normalizeDesc(details.description) : null;
+  const description = details.description
+    ? formatItemDescription(details.title, details.description)
+    : null;
 
   return (
     <>
@@ -183,6 +197,10 @@ export function ItemTooltip({ details }: { details: ItemTooltipData }) {
         ),
       }
     : undefined;
+
+  const description = details.description
+    ? formatItemDescription(details.title, details.description)
+    : null;
 
   return (
     <>
@@ -284,11 +302,11 @@ export function ItemTooltip({ details }: { details: ItemTooltipData }) {
         ) : null}
       </section>
 
-      {details.description ? (
+      {description ? (
         <>
           <div className="item-tooltip-divider" aria-hidden="true" />
           <section className="item-tooltip-flavor">
-            <p>{details.description}</p>
+            <p>{description}</p>
           </section>
         </>
       ) : null}

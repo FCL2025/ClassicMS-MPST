@@ -3,7 +3,7 @@
 // 顏色取自目前主題的 design token（經 1×1 canvas 正規化成 rgb，回避 oklch 解析差異）。
 import type { ItemTooltip } from "../api";
 import { saveBinaryFile } from "../api";
-import { ALL_JOB_LABELS, REQ_LABELS } from "./ItemTooltip";
+import { ALL_JOB_LABELS, REQ_LABELS, formatItemDescription } from "./ItemTooltip";
 
 const SCALE = 2;
 const REM = 16;
@@ -352,7 +352,11 @@ function layout(
  * 把裝備 tooltip 依目前主題重繪成 PNG 並儲存。
  * 桌面版跳另存對話框（使用者自選路徑）；web 版觸發瀏覽器下載。
  */
-export async function exportTooltipPng(details: ItemTooltip): Promise<void> {
+export async function exportTooltipPng(source: ItemTooltip): Promise<void> {
+  // 說明文字與畫面一致：還原字面 \n 換行，卷軸再把屬性逐條換行。
+  const details = source.description
+    ? { ...source, description: formatItemDescription(source.title, source.description) }
+    : source;
   const icon = details.iconBase64 ? await loadIcon(details.iconBase64) : null;
   const palette = resolvePalette();
 
@@ -401,8 +405,10 @@ export async function exportDropItemTooltipPng(details: ItemTooltip): Promise<vo
   const mctx = measureCanvas.getContext("2d");
   if (!mctx) throw new Error("無法建立繪圖環境");
 
-  // 資料裡的換行是字面 \n（對齊 monster.ts / skillJobs.ts）。
-  const description = details.description ? details.description.replace(/\\n/g, "\n") : null;
+  // 資料裡的換行是字面 \n（對齊 monster.ts / skillJobs.ts）；卷軸另把屬性逐條換行。
+  const description = details.description
+    ? formatItemDescription(details.title, details.description)
+    : null;
 
   // 文字欄寬：名稱與描述最長行取大，夾在下限～卡片上限。
   const textMax = DROP_MAX_WIDTH - PAD_X * 2 - ICON_FRAME - DROP_GAP;
