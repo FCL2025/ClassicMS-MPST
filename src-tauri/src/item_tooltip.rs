@@ -8,7 +8,8 @@ use std::sync::{Arc, Mutex};
 use base64::Engine;
 use serde::Serialize;
 
-use crate::catalog::{DataService, Result};
+use crate::catalog::{split_img_prefix, DataService, Result};
+use crate::commodity::item_path_candidates;
 use crate::wzjs::{Value, WzNode};
 
 /// 對齊 MPST 的 GEAR_STAT_LABELS（順序即顯示順序）。
@@ -87,8 +88,8 @@ impl DataService {
         self.build_tooltip(img_path, category_hint)
     }
 
-    /// 以道具 id 取裝備 tooltip（怪物圖鑑戰利品 hover 用）；
-    /// id 不是裝備或資料集缺此 img 時回 Ok(None)。
+    /// 以道具 id 取 tooltip（怪物圖鑑戰利品 hover 用）；支援所有類別
+    /// （Character / Item 各分區），id 查無 img 時回 Ok(None)。
     pub fn get_item_tooltip_by_id(&self, item_id: u32) -> Result<Option<ItemTooltip>> {
         let id = format!("{item_id:08}");
         // Character 直屬 img（0002xxxx 臉型、0003~0005 髮型等）。
@@ -112,10 +113,33 @@ impl DataService {
                     None
                 }
             });
-        let Some((img_path, category_hint)) = found else {
-            return Ok(None);
-        };
-        self.build_tooltip(img_path, category_hint)
+        if let Some((img_path, category_hint)) = found {
+            return self.build_tooltip(img_path, category_hint);
+        }
+        // 非裝備（Item/Consume、Etc、Install、Cash、Pet、Special）：
+        // 依 id 規則推候選路徑（對齊 commodity.rs），逐一嘗試。
+        for candidate in
+            item_path_candidates(item_id, |path| self.catalog.entries.contains_key(path))
+        {
+            let Some((img_key, inner)) = split_img_prefix(&self.catalog, &candidate) else {
+                continue;
+            };
+            let Ok(tree) = self.tree_for(&img_key) else {
+                continue;
+            };
+            let node = if inner.is_empty() {
+                tree.as_ref()
+            } else {
+                match tree.find(&inner) {
+                    Some(node) => node,
+                    None => continue,
+                }
+            };
+            if let Some(tooltip) = self.build_tooltip_from_node(candidate, node, String::new())? {
+                return Ok(Some(tooltip));
+            }
+        }
+        Ok(None)
     }
 
     /// 由裝備 img 根路徑聚合 tooltip 內容。
@@ -125,10 +149,20 @@ impl DataService {
         category_hint: String,
     ) -> Result<Option<ItemTooltip>> {
         let tree = self.tree_for(&img_path)?;
-        let Some(info) = tree.find("info") else {
+        self.build_tooltip_from_node(img_path, &tree, category_hint)
+    }
+
+    /// 由道具根節點（Character img 根或 Item img 內的道具節點）聚合 tooltip 內容。
+    fn build_tooltip_from_node(
+        &self,
+        root_path: String,
+        root: &WzNode,
+        category_hint: String,
+    ) -> Result<Option<ItemTooltip>> {
+        let Some(info) = root.find("info") else {
             return Ok(None);
         };
-        let item_id = img_path.rsplit('/').next().unwrap_or_default().to_string();
+        let item_id = root_path.rsplit('/').next().unwrap_or_default().to_string();
 
         let numeric_id = item_id.parse::<u32>().unwrap_or(0);
         let names = self.item_names()?;
@@ -143,7 +177,7 @@ impl DataService {
             _ => {}
         }
 
-        let icon_base64 = self.tooltip_icon(&img_path, &item_id, &category_hint)?;
+        let icon_base64 = self.tooltip_icon(&root_path, &item_id, &category_hint)?;
 
         let category_line = gear_category_line(&item_id, &category_hint);
         let attack_speed_label = prop_i64(info, "attackSpeed").map(attack_speed_label);
@@ -151,7 +185,7 @@ impl DataService {
 
         Ok(Some(ItemTooltip {
             item_id,
-            img_path,
+            img_path: root_path,
             title,
             description: description.filter(|d| !d.trim().is_empty()),
             category_line,

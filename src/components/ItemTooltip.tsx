@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import type { ItemTooltip as ItemTooltipData } from "../api";
-import { exportTooltipPng } from "./tooltipExport";
+import { exportDropItemTooltipPng, exportTooltipPng } from "./tooltipExport";
 
 /** 呈現方式對齊 Harepacker-MPST 的 ItemTooltipCard（gear 版本）。 */
 
@@ -29,12 +29,15 @@ function reqTone(value: number, highlightLevel = false): string {
   return highlightLevel ? "is-level" : "is-active";
 }
 
-export function ItemTooltip({ details }: { details: ItemTooltipData }) {
-  const [iconSize, setIconSize] = useState<{ width: number; height: number } | null>(null);
+/** 描述正規化：資料裡的換行是字面 \n（對齊 monster.ts / skillJobs.ts）。 */
+const normalizeDesc = (text: string): string => text.replace(/\\n/g, "\n");
+
+/** 右鍵「儲存成 PNG」選單（裝備與非裝備 tooltip 共用）：
+ *  選單開著時，點外面、Esc、視窗失焦或縮放就關掉。 */
+function useSavePngMenu(saveAsPng: () => void) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // 右鍵選單開著時：點外面、Esc、視窗失焦或縮放就關掉。
   useEffect(() => {
     if (!menu) return;
     const close = () => setMenu(null);
@@ -68,12 +71,105 @@ export function ItemTooltip({ details }: { details: ItemTooltipData }) {
     });
   };
 
-  const saveAsPng = () => {
-    setMenu(null);
+  const menuElement = menu
+    ? createPortal(
+        <div
+          ref={menuRef}
+          className="tooltip-context-menu"
+          style={{ left: menu.x, top: menu.y }}
+          role="menu"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setMenu(null);
+              saveAsPng();
+            }}
+          >
+            儲存成 PNG
+          </button>
+        </div>,
+        document.body,
+      )
+    : null;
+
+  return { openMenu, menuElement };
+}
+
+/** 非裝備戰利品 tooltip（消耗/其他）：左圖示、右側上名稱下描述，
+ *  外觀與分隔線對齊裝備版；右鍵可儲存成圖片。 */
+export function DropItemTooltip({ details }: { details: ItemTooltipData }) {
+  const [iconSize, setIconSize] = useState<{ width: number; height: number } | null>(null);
+  const { openMenu, menuElement } = useSavePngMenu(() => {
+    exportDropItemTooltipPng(details).catch((err: unknown) => {
+      window.alert(`儲存失敗：${String(err)}`);
+    });
+  });
+
+  const iconStyle: CSSProperties | undefined = iconSize
+    ? {
+        width: Math.min(
+          Math.max(iconSize.width * ICON_SCALE, ICON_MIN_SIZE),
+          ICON_MAX_SIZE,
+        ),
+        height: Math.min(
+          Math.max(iconSize.height * ICON_SCALE, ICON_MIN_SIZE),
+          ICON_MAX_SIZE,
+        ),
+      }
+    : undefined;
+
+  const description = details.description ? normalizeDesc(details.description) : null;
+
+  return (
+    <>
+      <article
+        className="item-tooltip drop-item-tooltip"
+        aria-label="道具 tooltip"
+        title="右鍵可儲存成圖片"
+        onContextMenu={openMenu}
+      >
+        <div className="item-tooltip-icon-frame">
+          {details.iconBase64 ? (
+            <img
+              alt={details.title}
+              draggable={false}
+              src={`data:image/png;base64,${details.iconBase64}`}
+              style={iconStyle}
+              onLoad={(event) =>
+                setIconSize({
+                  width: event.currentTarget.naturalWidth,
+                  height: event.currentTarget.naturalHeight,
+                })
+              }
+            />
+          ) : (
+            <span className="item-tooltip-icon-fallback">{details.itemId}</span>
+          )}
+        </div>
+        <div className="drop-item-tooltip-text">
+          <h3 className="drop-item-tooltip-name">{details.title}</h3>
+          {description ? (
+            <>
+              <div className="item-tooltip-divider" aria-hidden="true" />
+              <p className="drop-item-tooltip-desc">{description}</p>
+            </>
+          ) : null}
+        </div>
+      </article>
+      {menuElement}
+    </>
+  );
+}
+
+export function ItemTooltip({ details }: { details: ItemTooltipData }) {
+  const [iconSize, setIconSize] = useState<{ width: number; height: number } | null>(null);
+  const { openMenu, menuElement } = useSavePngMenu(() => {
     exportTooltipPng(details).catch((err: unknown) => {
       window.alert(`儲存失敗：${String(err)}`);
     });
-  };
+  });
 
   const iconStyle: CSSProperties | undefined = iconSize
     ? {
@@ -197,21 +293,7 @@ export function ItemTooltip({ details }: { details: ItemTooltipData }) {
         </>
       ) : null}
       </article>
-      {menu
-        ? createPortal(
-            <div
-              ref={menuRef}
-              className="tooltip-context-menu"
-              style={{ left: menu.x, top: menu.y }}
-              role="menu"
-            >
-              <button type="button" role="menuitem" onClick={saveAsPng}>
-                儲存成 PNG
-              </button>
-            </div>,
-            document.body,
-          )
-        : null}
+      {menuElement}
     </>
   );
 }

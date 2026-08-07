@@ -15,6 +15,12 @@ const ICON_SCALE = 2;
 const ICON_MIN_SIZE = 34;
 const ICON_MAX_SIZE = 68;
 const CARD_RADIUS = 6;
+// 非裝備戰利品版型（對齊 .drop-item-tooltip）。
+const DROP_MAX_WIDTH = 320;
+const DROP_PAD_Y = 10;
+const DROP_GAP = 12;
+const DROP_TEXT_GAP = 5;
+const DROP_TEXT_MIN = 80;
 
 const BODY_FONT = '"Segoe UI", Aptos, ui-sans-serif, system-ui, sans-serif';
 const MONO_FONT = '"Cascadia Mono", Consolas, monospace';
@@ -376,6 +382,113 @@ export async function exportTooltipPng(details: ItemTooltip): Promise<void> {
   ctx.stroke();
 
   layout(ctx, width, details, icon, palette, true);
+
+  const dataUrl = canvas.toDataURL("image/png");
+  const base64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
+  const safeTitle = details.title.replace(/[\\/:*?"<>|]/g, "_");
+  await saveBinaryFile(`item_${details.itemId}_${safeTitle}.png`, "PNG 圖片", "png", base64);
+}
+
+/**
+ * 非裝備戰利品 tooltip（左圖示、右側上名稱下描述）重繪成 PNG 並儲存；
+ * 版型對齊 .drop-item-tooltip，分隔線同裝備版漸層。
+ */
+export async function exportDropItemTooltipPng(details: ItemTooltip): Promise<void> {
+  const icon = details.iconBase64 ? await loadIcon(details.iconBase64) : null;
+  const palette = resolvePalette();
+
+  const measureCanvas = document.createElement("canvas");
+  const mctx = measureCanvas.getContext("2d");
+  if (!mctx) throw new Error("無法建立繪圖環境");
+
+  // 資料裡的換行是字面 \n（對齊 monster.ts / skillJobs.ts）。
+  const description = details.description ? details.description.replace(/\\n/g, "\n") : null;
+
+  // 文字欄寬：名稱與描述最長行取大，夾在下限～卡片上限。
+  const textMax = DROP_MAX_WIDTH - PAD_X * 2 - ICON_FRAME - DROP_GAP;
+  mctx.font = fontOf(800, 0.85);
+  let textW = mctx.measureText(details.title).width;
+  if (description) {
+    mctx.font = fontOf(400, 0.72);
+    for (const line of description.split("\n")) {
+      textW = Math.max(textW, mctx.measureText(line).width);
+    }
+  }
+  textW = Math.ceil(Math.min(Math.max(textW, DROP_TEXT_MIN), textMax));
+  const width = PAD_X * 2 + ICON_FRAME + DROP_GAP + textW;
+
+  const descLines = description ? wrapText(mctx, description, textW) : [];
+  const nameH = lineHeight(0.85);
+  const textH =
+    descLines.length > 0
+      ? nameH + DROP_TEXT_GAP + 1 + DROP_TEXT_GAP + descLines.length * lineHeight(0.72)
+      : nameH;
+  const height = Math.ceil(DROP_PAD_Y * 2 + Math.max(ICON_FRAME, textH));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(width * SCALE);
+  canvas.height = Math.round(height * SCALE);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("無法建立繪圖環境");
+  ctx.scale(SCALE, SCALE);
+
+  // 卡片背景（同裝備版）。
+  const bg = ctx.createLinearGradient(0, 0, 0, height);
+  bg.addColorStop(0, css(palette.surfaceRaised));
+  bg.addColorStop(1, css(palette.surface));
+  ctx.beginPath();
+  ctx.roundRect(0.5, 0.5, width - 1, height - 1, CARD_RADIUS);
+  ctx.fillStyle = bg;
+  ctx.fill();
+  ctx.strokeStyle = css(palette.borderStrong);
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // 左：icon 框（垂直置中）。
+  const frameY = (height - ICON_FRAME) / 2;
+  ctx.beginPath();
+  ctx.roundRect(PAD_X + 0.5, frameY + 0.5, ICON_FRAME - 1, ICON_FRAME - 1, 4);
+  ctx.fillStyle = css(palette.panel);
+  ctx.fill();
+  ctx.strokeStyle = css(palette.border);
+  ctx.stroke();
+  if (icon) {
+    const { width: iw, height: ih } = iconDrawSize(icon);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(
+      icon,
+      PAD_X + (ICON_FRAME - iw) / 2,
+      frameY + (ICON_FRAME - ih) / 2,
+      iw,
+      ih,
+    );
+  }
+
+  // 右：名稱、分隔線、描述（整欄垂直置中）。
+  const textX = PAD_X + ICON_FRAME + DROP_GAP;
+  let y = (height - textH) / 2;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.font = fontOf(800, 0.85);
+  ctx.fillStyle = css(palette.textStrong);
+  ctx.fillText(details.title, textX, y);
+  y += nameH;
+  if (descLines.length > 0) {
+    y += DROP_TEXT_GAP;
+    const divider = ctx.createLinearGradient(textX, 0, textX + textW, 0);
+    divider.addColorStop(0, css(palette.textStrong, 0));
+    divider.addColorStop(0.5, css(palette.textStrong, 0.32));
+    divider.addColorStop(1, css(palette.textStrong, 0));
+    ctx.fillStyle = divider;
+    ctx.fillRect(textX, y, textW, 1);
+    y += 1 + DROP_TEXT_GAP;
+    ctx.font = fontOf(400, 0.72);
+    ctx.fillStyle = css(palette.muted);
+    for (const line of descLines) {
+      ctx.fillText(line, textX, y);
+      y += lineHeight(0.72);
+    }
+  }
 
   const dataUrl = canvas.toDataURL("image/png");
   const base64 = dataUrl.slice(dataUrl.indexOf(",") + 1);

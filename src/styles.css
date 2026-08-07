@@ -1100,6 +1100,40 @@ textarea:focus-visible,
   white-space: pre-wrap;
 }
 
+/* 非裝備戰利品 tooltip：左圖示、右側上名稱下描述（分隔線沿用裝備版）。 */
+.drop-item-tooltip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 320px;
+  padding: 10px 12px;
+}
+
+.drop-item-tooltip-text {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 5px;
+  min-width: 0;
+}
+
+.drop-item-tooltip-name {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.drop-item-tooltip-text .item-tooltip-divider {
+  margin: 0;
+}
+
+.drop-item-tooltip-desc {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  white-space: pre-wrap;
+}
+
 /* 裝備 tooltip 的右鍵選單（portal 到 body，fixed 定位） */
 .tooltip-context-menu {
   position: fixed;
@@ -3019,12 +3053,11 @@ textarea:focus-visible,
   white-space: pre-line;
 }
 
-/* 戰利品裝備 hover tooltip：fixed 浮動、快速淡入淡出。
+/* 戰利品 hover tooltip：fixed 浮動、快速淡入淡出；滑鼠可移入持續顯示，右鍵可儲存成圖片。
    原點在 tooltip 左下角（translateY(-100%)），顯示於游標右上。 */
 .monster-drop-tooltip {
   position: fixed;
   z-index: 110;
-  pointer-events: none;
   opacity: 0;
   transform: translateY(calc(-100% + 4px));
   transition:
