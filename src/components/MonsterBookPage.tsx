@@ -13,6 +13,7 @@ import {
   type MobFrame,
   type MonsterSummary,
 } from "../api";
+import { DropSourcesDialog, type DropSourceItem, type MobThumbCache } from "./DropSourcesDialog";
 import { DropItemTooltip, ItemTooltip } from "./ItemTooltip";
 
 const mobFrameImageCache = new WeakMap<MobFrame, Promise<HTMLImageElement>>();
@@ -267,6 +268,12 @@ export function MonsterBookPage({
   }>({ mobId: null, itemIds: new Set() });
   const detailGenerationRef = useRef(0);
 
+  // 戰利品點擊後的「也掉落此道具的怪物」彈窗；null 表示未開啟。
+  const [dropSources, setDropSources] = useState<DropSourceItem | null>(null);
+  // 彈窗怪物縮圖快取：放父層，重開彈窗不重抓。
+  const mobThumbCacheRef = useRef<MobThumbCache>(new Map());
+  const listRef = useRef<HTMLElement>(null);
+
   // 戰利品 hover tooltip：結果按 itemId 快取，淡入淡出由 is-visible 控制。
   const tooltipCacheRef = useRef(new Map<number, Promise<ItemTooltipData | null>>());
   const [dropTip, setDropTip] = useState<{
@@ -400,6 +407,49 @@ export function MonsterBookPage({
     [detail, missingDrops],
   );
 
+  // 反向索引：itemId → 掉落它的怪物（清單已內嵌完整 drops，直接前端建表）。
+  const dropSourcesIndex = useMemo(() => {
+    const index = new Map<number, MonsterSummary[]>();
+    for (const entry of book ?? []) {
+      for (const drop of entry.drops) {
+        const list = index.get(drop.itemId);
+        if (list) list.push(entry);
+        else index.set(drop.itemId, [entry]);
+      }
+    }
+    return index;
+  }, [book]);
+
+  // 彈窗顯示的怪物清單：等級升冪（未知排最後），再等級同名稱排序。
+  const dropSourceMobs = useMemo(() => {
+    if (!dropSources) return [];
+    const mobs = dropSourcesIndex.get(dropSources.itemId) ?? [];
+    return [...mobs].sort(
+      (a, b) =>
+        (a.level ?? Number.MAX_SAFE_INTEGER) - (b.level ?? Number.MAX_SAFE_INTEGER) ||
+        (a.name ?? "").localeCompare(b.name ?? "", "zh-Hant") ||
+        a.mobId - b.mobId,
+    );
+  }, [dropSources, dropSourcesIndex]);
+
+  const openDropSources = (itemId: number, name: string | null) => {
+    hideDropTip();
+    setDropSources({ itemId, name });
+  };
+
+  const pickDropSource = useCallback((mobId: number) => {
+    setDropSources(null);
+    setSelectedId(mobId);
+  }, []);
+
+  // 選取變更時（含從掉落來源彈窗跳轉），左欄捲到選取列；被搜尋過濾掉就略過。
+  useEffect(() => {
+    if (selectedId === null) return;
+    listRef.current
+      ?.querySelector(".monster-list-item.is-active")
+      ?.scrollIntoView({ block: "nearest" });
+  }, [selectedId]);
+
   // 選取怪物 → 載入明細（generation guard 防止舊回應蓋掉新選擇）。
   useEffect(() => {
     if (selectedId === null) return;
@@ -431,7 +481,7 @@ export function MonsterBookPage({
   } else {
     content = (
       <>
-        <aside className="monster-left">
+        <aside className="monster-left" ref={listRef}>
           <div className="monster-search">
             <input
               type="search"
@@ -506,7 +556,12 @@ export function MonsterBookPage({
               ) : null}
 
               <section className="monster-section">
-                <h3>戰利品（{visibleDrops.length}）</h3>
+                <h3>
+                  戰利品（{visibleDrops.length}）
+                  {visibleDrops.length > 0 ? (
+                    <span className="monster-section-hint">點擊道具可查看掉落怪物</span>
+                  ) : null}
+                </h3>
                 {visibleDrops.length > 0 ? (
                   DROP_GROUP_ORDER.map((group) => {
                     const items = visibleDrops.filter(
@@ -520,9 +575,12 @@ export function MonsterBookPage({
                         </h4>
                         <div className="monster-drops">
                           {items.map((drop) => (
-                            <div
+                            <button
                               key={drop.itemId}
+                              type="button"
                               className="monster-drop"
+                              title="查看掉落此道具的怪物"
+                              onClick={() => openDropSources(drop.itemId, drop.name)}
                               onMouseEnter={(event) => showDropTip(drop.itemId, event, drop.name)}
                               onMouseLeave={hideDropTip}
                             >
@@ -534,7 +592,7 @@ export function MonsterBookPage({
                                 />
                               </div>
                               <span className="monster-drop-name">{drop.name ?? drop.itemId}</span>
-                            </div>
+                            </button>
                           ))}
                         </div>
                       </div>
@@ -584,6 +642,16 @@ export function MonsterBookPage({
             document.body,
           )
         : null}
+      {dropSources ? (
+        <DropSourcesDialog
+          item={dropSources}
+          sources={dropSourceMobs}
+          currentMobId={selectedId}
+          thumbCache={mobThumbCacheRef.current}
+          onPick={pickDropSource}
+          onClose={() => setDropSources(null)}
+        />
+      ) : null}
     </div>
   );
 }
