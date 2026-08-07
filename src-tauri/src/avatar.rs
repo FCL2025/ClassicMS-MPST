@@ -247,6 +247,8 @@ pub struct AvatarFrames {
     pub frames: Vec<Frame>,
     /// 表情動畫幀（幀數獨立，前端各自計時疊加）。
     pub face_frames: Vec<Frame>,
+    /// ItemEff 特效動畫幀（幀數獨立，絕對座標；沒有特效裝備時為空）。
+    pub effect_frames: Vec<Frame>,
 }
 
 /// 紙娃娃基本資料：body 動作清單 + 膚色清單。
@@ -383,6 +385,10 @@ pub fn avatar_equipment(svc: &DataService) -> Result<Vec<EquipItem>> {
 ///
 /// `hair_shade` = UI 的「髮型陰影」核取方塊：不勾 → 藏 z="hairShade" 的
 /// 髮型陰影層（有些髮型這層是很重的整片陰影）。
+///
+/// ItemEff 特效（Effect/ItemEff 裡有對應 id 的裝備，如特效披風）獨立輸出到
+/// `effect_frames`：幀數與 delay 自成一條時間軸，layers 是絕對座標，
+/// 前端與身體/表情圖層按 z 交錯合成。
 pub fn avatar_frames(
     svc: &DataService,
     parts: Vec<PartInput>,
@@ -472,6 +478,8 @@ pub fn avatar_frames(
 
     let mut frames: Vec<Frame> = Vec::with_capacity(body_frame_count);
     let mut anchor_tables: Vec<HashMap<String, (f32, f32)>> = Vec::with_capacity(body_frame_count);
+    // 第 0 幀 head canvas 的頂緣 y（ItemEff pos=1 特效的錨點用）。
+    let mut head_top_y: Option<f32> = None;
 
     for (i, &body_delay) in body_delays.iter().enumerate() {
         // 全域錨點絕對位置表（每幀重算：單幀靜態等價）
@@ -514,6 +522,9 @@ pub fn avatar_frames(
                 let root_pos =
                     (part.slot == "body" && node.name == "body").then_some(body_shifts[i]);
                 let pos = place_canvas(root_pos, node, &mut anchors);
+                if i == 0 && part.slot == "head" {
+                    head_top_y = Some(head_top_y.map_or(pos.1, |top: f32| top.min(pos.1)));
+                }
                 layers.push(Layer {
                     path: format!("{}/{crel}", part.img_key),
                     x: pos.0,
@@ -573,9 +584,13 @@ pub fn avatar_frames(
         }
     }
 
+    // ItemEff 特效幀：幀數獨立（同 face_frames 的設計），絕對座標。
+    let effect_frames = item_effect_frames(svc, &resolved, action, origin_0, head_top_y);
+
     Ok(AvatarFrames {
         frames,
         face_frames,
+        effect_frames,
     })
 }
 
@@ -801,6 +816,133 @@ fn collect_canvases<'a>(
         }
     }
     out
+}
+
+// ── ItemEff 特效 ────────────────────────────────────────────────
+
+/// 掃描已穿裝備的 ItemEff 特效（`Effect/ItemEff/<id 去前導零>/effect/<動作>`），
+/// 組成獨立播放的特效幀序列。這類裝備的本體貼圖多半是 1x1 空圖，
+/// 外觀全靠特效（如披風 01103617 仲夏夜蝴蝶、01103017 血腥薔薇）。
+///
+/// 特效幀的座標 = 錨點 - 特效 origin；錨點由動作層的 `pos` 決定（見
+/// [`item_effect_anchor`]）。z 取動作層的整數 z（-2 = 角色背後、2 = 最上層；
+/// canvas 上統一的 z=Int(0) 是無資訊的預設值，忽略）。
+/// 多個部位都有特效時共用一條時間軸：幀數以第一個為準，其餘 modulo 循環
+/// （實務上通常只有一件特效裝備）。
+fn item_effect_frames(
+    svc: &DataService,
+    resolved: &[ResolvedPart],
+    action: &str,
+    origin_0: (f32, f32),
+    head_top_y: Option<f32>,
+) -> Vec<Frame> {
+    let Ok(tree) = svc.tree_for("Effect/ItemEff") else {
+        return Vec::new();
+    };
+    struct ItemEffect {
+        frames: Vec<String>,
+        z: i32,
+        anchor: (f32, f32),
+    }
+    let mut effects: Vec<ItemEffect> = Vec::new();
+    for part in resolved {
+        // body/head/face 是紙娃娃本體，不可能有 ItemEff
+        if matches!(part.slot.as_str(), "body" | "head" | "face") {
+            continue;
+        }
+        // img_key 尾段即裝備 id；ItemEff 的 key 是去掉前導零的 id
+        // （01103617 → "1103617"）
+        let raw_id = part.img_key.rsplit('/').next().unwrap_or("");
+        let id = raw_id.trim_start_matches('0');
+        if id.is_empty() {
+            continue;
+        }
+        let effect_rel = format!("{id}/effect");
+        let Some(effect_node) = tree.find(&effect_rel) else {
+            continue;
+        };
+        // 特效動作鏈：目前動作 → default → 第一個像動作的子節點
+        // （動作節點的數位子節點直接就是 canvas 幀）
+        let chain: Vec<&str> = [action, "default"]
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .collect();
+        let Some(action_rel) = find_action_at(effect_node, &effect_rel, &chain) else {
+            continue;
+        };
+        let Some(action_node) = tree.find(&action_rel) else {
+            continue;
+        };
+        let z = action_node
+            .find("z")
+            .and_then(|n| value_as_i32(&n.value))
+            .or_else(|| effect_node.find("z").and_then(|n| value_as_i32(&n.value)))
+            .map(int_z_index)
+            .unwrap_or(ZMAP.len() as i32);
+        let pos_mode = action_node
+            .find("pos")
+            .and_then(|n| value_as_i32(&n.value))
+            .unwrap_or(0);
+        let anchor = item_effect_anchor(pos_mode, origin_0, head_top_y);
+        let frames: Vec<String> = frame_list(&tree, &action_rel)
+            .iter()
+            .filter_map(|rel| resolve_frame(&tree, rel))
+            .collect();
+        if frames.is_empty() {
+            continue;
+        }
+        effects.push(ItemEffect { frames, z, anchor });
+    }
+    let Some(first) = effects.first() else {
+        return Vec::new();
+    };
+    let frame_count = first.frames.len();
+    (0..frame_count)
+        .map(|j| {
+            let mut delay = DEFAULT_DELAY;
+            let mut layers = Vec::new();
+            for (k, eff) in effects.iter().enumerate() {
+                let rel = &eff.frames[wrap_index(j, eff.frames.len())];
+                let Some(node) = tree.find(rel) else {
+                    continue;
+                };
+                if k == 0 {
+                    // 幀 delay 標在特效 canvas 自己身上
+                    delay = frame_delay(node);
+                }
+                let origin = vector_prop(node, "origin").unwrap_or((0.0, 0.0));
+                layers.push(Layer {
+                    path: format!("Effect/ItemEff/{rel}"),
+                    x: eff.anchor.0 - origin.0,
+                    y: eff.anchor.1 - origin.1,
+                    z: eff.z,
+                });
+            }
+            layers.sort_by_key(|l| std::cmp::Reverse(l.z));
+            Frame {
+                delay,
+                layers,
+                face_anchor: None,
+                show_face: false,
+            }
+        })
+        .collect()
+}
+
+/// ItemEff 特效錨點（由動作層 `pos` 決定；對齊 client 行為）：
+/// - pos=1：頭頂（x 沿用角色定位點，y 取第 0 幀 head canvas 頂緣）——
+///   帽子/環繞全身的特效（蝴蝶、光環）用；
+/// - pos=0 或缺省：角色定位點（body 第 0 幀 origin，即腳底）——
+///   地面型特效（薔薇花圃、鎖鏈）用。
+///
+/// 沒有 head 資料時 pos=1 退回角色定位點。
+fn item_effect_anchor(pos_mode: i32, origin_0: (f32, f32), head_top_y: Option<f32>) -> (f32, f32) {
+    if pos_mode == 1 {
+        if let Some(top) = head_top_y {
+            return (origin_0.0, top);
+        }
+    }
+    origin_0
 }
 
 // ── 對齊與圖層 ──────────────────────────────────────────────────
@@ -1218,6 +1360,18 @@ mod tests {
         assert_eq!(wrap_index(3, 3), 0);
         assert_eq!(wrap_index(5, 3), 2);
         assert_eq!(wrap_index(7, 2), 1);
+    }
+
+    #[test]
+    fn item_effect_anchor_modes() {
+        let feet = (16.0, 31.0); // body 第 0 幀 origin（角色定位點 = 腳底）
+                                 // pos=1 → 頭頂（x 沿用定位點，y 取 head 頂緣）
+        assert_eq!(item_effect_anchor(1, feet, Some(-33.0)), (16.0, -33.0));
+        // pos=0 / 其他值 → 角色定位點
+        assert_eq!(item_effect_anchor(0, feet, Some(-33.0)), feet);
+        assert_eq!(item_effect_anchor(2, feet, Some(-33.0)), feet);
+        // 沒有 head 資料時 pos=1 退回角色定位點
+        assert_eq!(item_effect_anchor(1, feet, None), feet);
     }
 
     #[test]

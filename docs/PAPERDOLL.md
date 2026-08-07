@@ -77,8 +77,30 @@
 - **部分髮型圖示空白、穿上變光頭（如 00030160 一線頭）**：這類髮型 `default` 只有一張 z="hair" 的 canvas、沒有 `hairOverHead` 變體。兩個問題：① icon 路徑寫死 `default/hairOverHead` 取不到圖 → `loadAvatarIcon` 加 fallback 退用 `default/hair`；② 無帽遮髮規則把 z="hair" 當「帽下變體」藏掉，整個髮型被藏光 → `avatar_frames` 改為無帽時若該幀髮型 canvas 會全被藏掉則全部保留（有帽行為不變）。三張 canvas 匯出 PNG 實測確認都是真貼圖。
 - **footer 麵包屑不跟紙娃娃選擇**：點商店卡片（穿上或脫下）時回報該裝備 img 路徑（如 `Character/Hair/00030160`），avatar view 的 footer 改顯示它；`slotImgPath` 對齊後端 `img_key_of`（飾品類都在 Accessory）。
 
-## 第三輪功能（2026-07-27）
+## 第四輪功能（2026-08-07）：ItemEff 特效披風
 
+1. **ItemEff 特效支援**：`Effect/ItemEff/<id 去前導零>`（如披風 01103617 仲夏夜蝴蝶、
+   01103017 血腥薔薇）有對應條目的裝備，紙娃娃會播放其特效。這類披風本體貼圖是
+   1x1 空圖，外觀全靠特效。資料結構：`<id>/effect/<動作>/<幀>`，幀是**直接編號的
+   canvas**（delay 標在 canvas 上），動作層有 `z`/`pos` 整數屬性；動作鏈 = 目前動作
+   → `default` → 第一個像動作的子節點（stand1 無對應 → default）。
+2. **第三條時間軸 `effectFrames`**：特效幀數/delay 獨立於身體與表情（同 faceFrames
+   設計），layers 是絕對座標，前端 composeLayers 併入按 z 交錯；匯出（GIF/WebP）
+   時間軸改三週期 lcm，bbox 納入特效範圍。全鏈路：avatar.rs → gui.rs / web-wasm
+   （透傳）→ api.ts / api.web.ts / hosted/backend.ts 型別 → hosted/avatar.ts 移植
+   （hosted 資料集含 `tree/Effect/ItemEff.json.gz`）→ AvatarPreview / avatarExport。
+3. **定位語義（實測逆推，無現成參考——WzComparerR2 的 Avatar 外掛未實作）**：
+   錨點由動作層 `pos` 決定——pos=1 → 頭頂（x 取 body 定位點、y 取第 0 幀 head
+   canvas 頂緣；蝴蝶/光環類）；pos=0 或缺省 → 角色定位點（body 第 0 幀 origin =
+   腳底；花圃/鎖鏈類）。z 取動作層整數 z 走 int 規則（-2 = 角色背後、2 = 最上層；
+   canvas 上統一的 z=Int(0) 是無資訊預設值，忽略）。多部位同時有特效時共用一條
+   時間軸（幀數以第一個為準，其餘 modulo）。
+4. **驗證工具**：`itemeff_probe`/`itemeff_export`/`itemeff_render` 三個 example +
+   `scripts/itemeff_composite.mjs`（Node + sharp 按前端 composeLayers 數學合成）。
+   四件特效披風（01103617/01103157/01103155/01103017）合成截圖全數正確
+   （特效在角色背後、下緣貼腳底），截圖在 `out/itemeff/render/`。
+
+## 第三輪功能（2026-07-27）
 1. **髮型/臉型顏色**：商店列表同造型只顯示一張卡（預設色，即顏色 0）；左下「動作」下方新增左右並排的「臉型顏色 / 髮型顏色」下拉（支援滑鼠滾輪直接換色，不用點開）。穿上時套用選取色、換色時已穿部位即時換色（該造型無此色退回顏色 0）；未穿臉型時預設臉也跟著臉色走。邏輯集中在前端 `src/components/avatarColor.ts`。
    - **顏色編碼（對正式資料驗證）**：髮型末碼是顏色（0003XXX**0–7**，名稱依序 黑/紅/橙/黃/綠/藍/紫/褐）；臉型**百位數**是顏色（0002C**X**SS 的 X，即倒數第三碼，+100 一色，如 很專心臉型 = 00020016/00020116…00020716、女版系列 00021016–00021716，0005xxxx 臉同規則）。臉色 0–8，名稱依序 **黑/青/紅/綠/黃/藍/紫/粉/白**（使用者實機核對：20200=紅、20500=藍）；8 白色非每個造型都有，沒有該 id 就不顯示白色選項。注意臉型**不是**末碼（00020000–00020023 是連號的不同造型）；同名不同系列（如 企鵝臉型 00025023/00026029）是不同造型，分組要用「去掉顏色位的基底 id」而非名稱。
    - 髮型/臉型卡片顯示名去掉開頭顏色詞（如 黑色短中分 → 短中分）；title 保留全名+id。

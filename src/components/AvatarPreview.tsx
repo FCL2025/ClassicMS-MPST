@@ -51,7 +51,7 @@ interface AvatarPreviewProps {
   action: string;
 }
 
-// 正方形 canvas 預覽：棋盤格背景（CSS），body 與 face 兩條動畫各自循環再疊加。
+// 正方形 canvas 預覽：棋盤格背景（CSS），body / face / ItemEff 特效三條動畫各自循環再疊加。
 export function AvatarPreview({ frames, loading, error, playing, active, action }: AvatarPreviewProps) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -92,7 +92,7 @@ export function AvatarPreview({ frames, loading, error, playing, active, action 
     // 新動畫從頭播。
     timeRef.current = 0;
     const paths = new Set<string>();
-    for (const frame of [...frames.frames, ...frames.faceFrames]) {
+    for (const frame of [...frames.frames, ...frames.faceFrames, ...frames.effectFrames]) {
       for (const layer of frame.layers) paths.add(layer.path);
     }
     Promise.all(
@@ -116,6 +116,7 @@ export function AvatarPreview({ frames, loading, error, playing, active, action 
 
   const bodySequence = buildSequence(frames?.frames);
   const faceSequence = buildSequence(frames?.faceFrames);
+  const effectSequence = buildSequence(frames?.effectFrames);
 
   // 繪製迴圈：貼圖就緒後以 rAF 驅動；暫停時凍結在 timeRef 記錄的當前幀。
   useEffect(() => {
@@ -145,6 +146,7 @@ export function AvatarPreview({ frames, loading, error, playing, active, action 
         images,
         frameIndexAt(bodySequence, time),
         faceSequence ? frameIndexAt(faceSequence, time) : -1,
+        effectSequence ? frameIndexAt(effectSequence, time) : -1,
         originX,
         originY,
         scale,
@@ -166,7 +168,7 @@ export function AvatarPreview({ frames, loading, error, playing, active, action 
     };
     raf = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(raf);
-    // bodySequence/faceSequence 由 frames 推導，不需列入依賴。
+    // bodySequence/faceSequence/effectSequence 由 frames 推導，不需列入依賴。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [frames, images, playing, active, size]);
 

@@ -567,6 +567,105 @@ function hairCanvasHidden(z: string | null, hairCover: boolean): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// ItemEff 特效（avatar.rs 的 item_effect_frames / item_effect_anchor）
+// ---------------------------------------------------------------------------
+
+/** ItemEff 特效錨點（動作層 pos 決定）：pos=1 → 頭頂（x 沿用角色定位點）；
+ *  pos=0/缺省 → 角色定位點（body 第 0 幀 origin，即腳底）。 */
+function itemEffectAnchor(
+  posMode: number,
+  origin0: [number, number],
+  headTopY: number | null,
+): [number, number] {
+  if (posMode === 1 && headTopY != null) return [origin0[0], headTopY];
+  return origin0;
+}
+
+let itemEffTreeCache: Promise<TreeNode | null> | null = null;
+
+/** Effect/ItemEff 整張 img（session 快取；資料集沒有就當無特效）。 */
+function loadItemEffTree(): Promise<TreeNode | null> {
+  if (!itemEffTreeCache) {
+    itemEffTreeCache = loadTree("Effect/ItemEff").catch(() => null);
+  }
+  return itemEffTreeCache;
+}
+
+interface ItemEffect {
+  /** 每幀在 img 內的相對路徑（已解析）。 */
+  frames: string[];
+  z: number;
+  anchor: [number, number];
+}
+
+/** 掃描已穿裝備的 ItemEff 特效，組成獨立播放的特效幀序列（絕對座標）。
+ *  這類裝備的本體貼圖多半是 1x1 空圖，外觀全靠特效（如披風 01103617 仲夏夜蝴蝶）。
+ *  z 取動作層整數 z（canvas 上統一的 z=Int(0) 是無資訊預設值，忽略）；
+ *  多個部位都有特效時共用一條時間軸，幀數以第一個為準、其餘 modulo 循環。 */
+async function itemEffectFrames(
+  resolved: ResolvedPart[],
+  action: string,
+  origin0: [number, number],
+  headTopY: number | null,
+): Promise<AvatarFrame[]> {
+  const tree = await loadItemEffTree();
+  if (!tree) return [];
+  const effects: ItemEffect[] = [];
+  for (const part of resolved) {
+    // body/head/face 是紙娃娃本體，不可能有 ItemEff
+    if (part.slot === "body" || part.slot === "head" || part.slot === "face") continue;
+    // imgKey 尾段即裝備 id；ItemEff 的 key 是去掉前導零的 id（01103617 → "1103617"）
+    const id = (part.imgKey.split("/").pop() ?? "").replace(/^0+/, "");
+    if (id === "") continue;
+    const effectRel = `${id}/effect`;
+    const effectNode = findNode(tree, effectRel);
+    if (!effectNode) continue;
+    // 特效動作鏈：目前動作 → default → 第一個像動作的子節點
+    const chain = [action, "default"].filter((s) => s !== "");
+    const actionRel = findActionAt(effectNode, effectRel, chain);
+    if (actionRel == null) continue;
+    const actionNode = findNode(tree, actionRel);
+    if (!actionNode) continue;
+    const actionZ = childOf(actionNode, "z");
+    const effectZ = childOf(effectNode, "z");
+    const zRaw =
+      (actionZ && valueAsI32(actionZ.value)) ?? (effectZ && valueAsI32(effectZ.value));
+    const z = zRaw != null ? intZIndex(zRaw) : ZMAP.length;
+    const posNode = childOf(actionNode, "pos");
+    const posMode = (posNode && valueAsI32(posNode.value)) ?? 0;
+    const frames = frameList(tree, actionRel)
+      .map((rel) => resolveFrame(tree, rel))
+      .filter((rel): rel is string => rel != null);
+    if (frames.length === 0) continue;
+    effects.push({ frames, z, anchor: itemEffectAnchor(posMode, origin0, headTopY) });
+  }
+  const first = effects[0];
+  if (!first) return [];
+  const out: AvatarFrame[] = [];
+  for (let j = 0; j < first.frames.length; j += 1) {
+    let delay = DEFAULT_DELAY;
+    const layers: AvatarLayer[] = [];
+    effects.forEach((eff, k) => {
+      const rel = eff.frames[wrapIndex(j, eff.frames.length)];
+      const node = findNode(tree, rel);
+      if (!node) return;
+      // 幀 delay 標在特效 canvas 自己身上
+      if (k === 0) delay = frameDelay(node);
+      const origin = vectorProp(node, "origin") ?? [0, 0];
+      layers.push({
+        path: `Effect/ItemEff/${rel}`,
+        x: eff.anchor[0] - origin[0],
+        y: eff.anchor[1] - origin[1],
+        z: eff.z,
+      });
+    });
+    layers.sort((a, b) => b.z - a.z);
+    out.push({ delay, layers, faceAnchor: null, showFace: false });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // 合成主流程（avatar.rs:386-580）
 // ---------------------------------------------------------------------------
 
@@ -576,6 +675,7 @@ function hairCanvasHidden(z: string | null, hairCover: boolean): boolean {
  * 對齊順序：body → head → face → hair → cap → 其餘固定順序。
  * 主幀數 = body 動作幀數，其他部位幀索引用 modulo 循環。
  * 臉（face）獨立輸出到 faceFrames（layers 相對於 brow 錨點）。
+ * ItemEff 特效（Effect/ItemEff 有對應 id 的裝備）獨立輸出到 effectFrames（絕對座標）。
  */
 export async function getAvatarFrames(
   parts: PartInput[],
@@ -644,6 +744,8 @@ export async function getAvatarFrames(
 
   const frames: AvatarFrame[] = [];
   const anchorTables: Anchors[] = [];
+  // 第 0 幀 head canvas 的頂緣 y（ItemEff pos=1 特效的錨點用）。
+  let headTopY: number | null = null;
 
   for (let i = 0; i < bodyFrameCount; i += 1) {
     // 全域錨點絕對位置表（每幀重算：單幀靜態等價）
@@ -678,6 +780,9 @@ export async function getAvatarFrames(
         if (!hairShade && zStr(node) === "hairShade") return;
         const rootPos = part.slot === "body" && node.name === "body" ? bodyShifts[i] : null;
         const pos = placeCanvas(rootPos, node, anchors);
+        if (i === 0 && part.slot === "head") {
+          headTopY = headTopY == null ? pos[1] : Math.min(headTopY, pos[1]);
+        }
         layers.push({
           path: `${part.imgKey}/${crel}`,
           x: pos[0],
@@ -726,5 +831,8 @@ export async function getAvatarFrames(
     });
   }
 
-  return { frames, faceFrames };
+  // ItemEff 特效幀：幀數獨立（同 faceFrames 的設計），絕對座標。
+  const effectFrames = await itemEffectFrames(resolved, action, origin0, headTopY);
+
+  return { frames, faceFrames, effectFrames };
 }

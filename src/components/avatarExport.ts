@@ -40,10 +40,12 @@ export interface BoundingBox {
 
 /** 組出某一時刻要畫的全部圖層（絕對座標、z 遞減=底層在前）。
  *  表情層是相對 brow 錨點的相對座標，在這裡用當下身體幀的 faceAnchor 即時配對，
- *  並按 z 與身體圖層交錯排序（瀏海 hairOverHead 會正確蓋在臉上）。 */
+ *  並按 z 與身體圖層交錯排序（瀏海 hairOverHead 會正確蓋在臉上）。
+ *  ItemEff 特效層本身就是絕對座標，直接併入一起排序。 */
 export function composeLayers(
   bodyFrame: AvatarFrame | undefined,
   faceFrame: AvatarFrame | undefined,
+  effectFrame?: AvatarFrame | undefined,
 ): AvatarFrame["layers"] {
   if (!bodyFrame) return [];
   const layers = [...bodyFrame.layers];
@@ -53,11 +55,12 @@ export function composeLayers(
       layers.push({ ...layer, x: anchorX + layer.x, y: anchorY + layer.y });
     }
   }
+  if (effectFrame) layers.push(...effectFrame.layers);
   return layers.sort((a, b) => b.z - a.z);
 }
 
 /** 全部幀全部圖層的 bounding box（置中與縮放共用）。
- *  表情層是相對座標，需逐身體幀配對後再納入範圍計算。 */
+ *  表情層是相對座標，需逐身體幀配對後再納入範圍計算；特效層是絕對座標，獨立掃。 */
 export function computeBoundingBox(
   frames: AvatarFrames,
   images: Map<string, HTMLImageElement>,
@@ -66,29 +69,39 @@ export function computeBoundingBox(
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
+  const extend = (layer: AvatarFrame["layers"][number]) => {
+    const img = images.get(layer.path);
+    if (!img) return;
+    minX = Math.min(minX, layer.x);
+    minY = Math.min(minY, layer.y);
+    maxX = Math.max(maxX, layer.x + img.naturalWidth);
+    maxY = Math.max(maxY, layer.y + img.naturalHeight);
+  };
   for (const bodyFrame of frames.frames) {
     for (const faceFrame of frames.faceFrames.length > 0 ? frames.faceFrames : [undefined]) {
       for (const layer of composeLayers(bodyFrame, faceFrame)) {
-        const img = images.get(layer.path);
-        if (!img) continue;
-        minX = Math.min(minX, layer.x);
-        minY = Math.min(minY, layer.y);
-        maxX = Math.max(maxX, layer.x + img.naturalWidth);
-        maxY = Math.max(maxY, layer.y + img.naturalHeight);
+        extend(layer);
       }
+    }
+  }
+  for (const effectFrame of frames.effectFrames) {
+    for (const layer of effectFrame.layers) {
+      extend(layer);
     }
   }
   if (!Number.isFinite(minX) || maxX <= minX || maxY <= minY) return null;
   return { minX, minY, width: maxX - minX, height: maxY - minY };
 }
 
-/** 把指定 body 幀 + face 幀合成畫到 ctx（會先清整張畫布）；表情以當下身體幀的錨點配對、按 z 交錯。 */
+/** 把指定 body 幀 + face 幀 + 特效幀合成畫到 ctx（會先清整張畫布）；
+ *  表情以當下身體幀的錨點配對、特效直接以絕對座標併入，按 z 交錯。 */
 export function composeFrame(
   ctx: CanvasRenderingContext2D,
   frames: AvatarFrames,
   images: Map<string, HTMLImageElement>,
   bodyIndex: number,
   faceIndex: number,
+  effectIndex: number,
   originX: number,
   originY: number,
   scale: number,
@@ -98,6 +111,7 @@ export function composeFrame(
   const layers = composeLayers(
     frames.frames[bodyIndex],
     faceIndex >= 0 ? frames.faceFrames[faceIndex] : undefined,
+    effectIndex >= 0 ? frames.effectFrames[effectIndex] : undefined,
   );
   for (const layer of layers) {
     const img = images.get(layer.path);
@@ -171,9 +185,9 @@ interface Timeline {
   count: number;
 }
 
-/** body 與 face 的合併週期（lcm，封頂 10000ms）+ 固定步長取樣（最多 200 幀）。 */
-function buildTimeline(bodyTotal: number, faceTotal: number): Timeline {
-  const rawPeriod = faceTotal > 0 ? lcm(bodyTotal, faceTotal) : bodyTotal;
+/** body / face / 特效的合併週期（lcm，封頂 10000ms）+ 固定步長取樣（最多 200 幀）。 */
+function buildTimeline(totals: number[]): Timeline {
+  const rawPeriod = totals.filter((total) => total > 0).reduce((acc, total) => lcm(acc, total), 1);
   const period = Math.min(Math.max(rawPeriod, EXPORT_STEP), EXPORT_MAX_PERIOD);
   const step = period / EXPORT_STEP > EXPORT_MAX_FRAMES
     ? Math.ceil(period / EXPORT_MAX_FRAMES)
@@ -189,8 +203,13 @@ async function forEachExportFrame(
   const bodySequence = buildSequence(scene.frames.frames);
   if (!bodySequence) throw new Error("沒有可匯出的動畫");
   const faceSequence = buildSequence(scene.frames.faceFrames);
+  const effectSequence = buildSequence(scene.frames.effectFrames);
   const stage = createExportStage(scene.frames, scene.images);
-  const { step, count } = buildTimeline(bodySequence.total, faceSequence?.total ?? 0);
+  const { step, count } = buildTimeline([
+    bodySequence.total,
+    faceSequence?.total ?? 0,
+    effectSequence?.total ?? 0,
+  ]);
   for (let i = 0; i < count; i += 1) {
     const t = i * step;
     composeFrame(
@@ -199,6 +218,7 @@ async function forEachExportFrame(
       scene.images,
       frameIndexAt(bodySequence, t),
       faceSequence ? frameIndexAt(faceSequence, t) : -1,
+      effectSequence ? frameIndexAt(effectSequence, t) : -1,
       stage.originX,
       stage.originY,
       stage.scale,

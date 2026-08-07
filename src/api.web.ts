@@ -269,10 +269,12 @@ export interface AvatarFrame {
   showFace: boolean;
 }
 
-/** 紙娃娃合成結果：身體動畫幀 + 表情動畫幀。 */
+/** 紙娃娃合成結果：身體動畫幀 + 表情動畫幀 + ItemEff 特效動畫幀。 */
 export interface AvatarFrames {
   frames: AvatarFrame[];
   faceFrames: AvatarFrame[];
+  /** ItemEff 特效動畫幀（幀數獨立，絕對座標；沒有特效裝備時為空）。 */
+  effectFrames: AvatarFrame[];
 }
 
 // pickDataDirectory 與 openDataDir 之間的暫存:File 物件無法走字串路徑往返,
