@@ -2366,6 +2366,62 @@ textarea:focus-visible,
   color: var(--text-strong);
 }
 
+.avatar-shop-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.avatar-shop-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--button-bg);
+  color: var(--text-strong);
+  padding: 4px 8px;
+  font-size: 0.75rem;
+}
+
+.avatar-shop-search-count {
+  color: var(--subtle);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.avatar-shop-search-clear {
+  display: grid;
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--button-bg);
+  color: var(--text);
+  font-size: 0.78rem;
+  line-height: 1;
+}
+
+.avatar-shop-search-clear:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* 搜尋結果卡片上的部位標示。 */
+.avatar-shop-card-slot {
+  display: inline-block;
+  margin-right: 4px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  padding: 0 4px;
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
 .avatar-shop-grid-wrap {
   flex: 1 1 auto;
   min-height: 0;

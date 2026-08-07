@@ -29,6 +29,27 @@ export const SLOT_TABS: readonly { slot: EquipSlot; label: string }[] = [
 // 卡片固定高 64px、grid 間距 7px，供列數估算（對齊 .avatar-shop-card / .avatar-shop-grid）。
 const CARD_ROW_PX = 64 + 7;
 
+// slot → 中文部位名（搜尋結果跨部位，卡片上要標示）。
+const SLOT_LABELS = new Map(SLOT_TABS.map(({ slot, label }) => [slot, label]));
+
+// 模糊比對評分（越小越好）：名稱直接包含最優先，其次代碼包含，
+// 最後是字元依序出現（如「楓盾」可中「楓葉盾」）；完全搭不上回 null。
+function fuzzyScore(query: string, name: string, id: string): number | null {
+  const q = query.toLowerCase();
+  const n = name.toLowerCase();
+  const nameHit = n.indexOf(q);
+  if (nameHit >= 0) return nameHit;
+  const idHit = id.indexOf(q);
+  if (idHit >= 0) return 1000 + idHit;
+  let pos = 0;
+  for (const ch of q) {
+    const found = n.indexOf(ch, pos);
+    if (found < 0) return null;
+    pos = found + 1;
+  }
+  return 2000 + pos;
+}
+
 // icon dataURL 快取（module-level）：裝備近七千件，只抓看過的，看過就不再抓。
 const iconCache = new Map<string, Promise<string | null>>();
 
@@ -75,10 +96,13 @@ function pageNumbers(current: number, total: number): (number | "…")[] {
 function AvatarShopCard({
   item,
   worn,
+  slotLabel,
   onToggle,
 }: {
   item: EquipItem;
   worn: boolean;
+  /** 搜尋模式才給：跨部位結果在卡片上標示部位名。 */
+  slotLabel?: string;
   onToggle: () => void;
 }) {
   const [icon, setIcon] = useState<string | null>(null);
@@ -103,6 +127,7 @@ function AvatarShopCard({
     >
       <span className="avatar-shop-card-icon">{icon ? <img src={icon} alt="" /> : null}</span>
       <span className="avatar-shop-card-name">
+        {slotLabel ? <span className="avatar-shop-card-slot">{slotLabel}</span> : null}
         {item.slot === "hair" || item.slot === "face" ? stripColorPrefix(item.name) : item.name}
       </span>
     </button>
@@ -154,6 +179,8 @@ export function AvatarShop({
 }: AvatarShopProps) {
   const [activeSlot, setActiveSlot] = useState<EquipSlot>("cap");
   const [page, setPage] = useState(0);
+  // 搜尋關鍵字；非空時改為跨全部部位的模糊搜尋，忽略部位 tab。
+  const [query, setQuery] = useState("");
   // 初次渲染、尚未量測前的暫用每頁數；之後由可用高度 × 欄數動態決定。
   const [pageSize, setPageSize] = useState(24);
   const gridWrapRef = useRef<HTMLDivElement | null>(null);
@@ -200,9 +227,28 @@ export function AvatarShop({
   }, [allItems, cashOnly, activeSlot]);
   // 換色時查 variant 是否存在用（全裝備 id 集合）。
   const equipmentIds = useMemo(() => new Set(equipment.map((item) => item.id)), [equipment]);
-  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+
+  // 搜尋模式：跨全部部位，套用點裝過濾與髮/臉同造型去重，依模糊分數排序。
+  const searchItems = useMemo(() => {
+    const q = query.trim();
+    if (!q) return null;
+    const scored: { item: EquipItem; score: number }[] = [];
+    for (const { slot } of SLOT_TABS) {
+      const pool = itemsBySlot.get(slot) ?? [];
+      const filtered = cashOnly ? pool.filter((item) => item.cash) : pool;
+      for (const item of dedupeColorVariants(slot, filtered)) {
+        const score = fuzzyScore(q, item.name, item.id);
+        if (score != null) scored.push({ item, score });
+      }
+    }
+    scored.sort((a, b) => a.score - b.score);
+    return scored.map((entry) => entry.item);
+  }, [itemsBySlot, query, cashOnly]);
+
+  const shown = searchItems ?? items;
+  const totalPages = Math.max(1, Math.ceil(shown.length / pageSize));
   const currentPage = Math.min(page, totalPages - 1);
-  const pageItems = items.slice(currentPage * pageSize, currentPage * pageSize + pageSize);
+  const pageItems = shown.slice(currentPage * pageSize, currentPage * pageSize + pageSize);
 
   // 滾輪換頁：滾下=下一頁、滾上=上一頁（到頂/到底不動）。
   // React 的 onWheel 是 passive listener，無法 preventDefault，所以改綁原生 wheel 事件。
@@ -241,10 +287,42 @@ export function AvatarShop({
         ))}
       </div>
 
+      <div className="avatar-shop-search">
+        <input
+          type="search"
+          value={query}
+          placeholder="模糊搜尋名稱或代碼…"
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setPage(0);
+          }}
+        />
+        {query.trim() ? (
+          <>
+            <span className="avatar-shop-search-count">{searchItems?.length ?? 0} 件</span>
+            <button
+              type="button"
+              className="avatar-shop-search-clear"
+              aria-label="清除搜尋"
+              onClick={() => {
+                setQuery("");
+                setPage(0);
+              }}
+            >
+              ×
+            </button>
+          </>
+        ) : null}
+      </div>
+
       <div className="avatar-shop-grid-wrap" ref={gridWrapRef}>
         {pageItems.length === 0 ? (
           <p className="avatar-shop-status">
-            {cashOnly ? "此部位沒有點裝" : "此部位沒有裝備"}
+            {searchItems
+              ? "找不到符合的裝備"
+              : cashOnly
+                ? "此部位沒有點裝"
+                : "此部位沒有裝備"}
           </p>
         ) : (
           <div className="avatar-shop-grid" ref={gridRef}>
@@ -263,6 +341,7 @@ export function AvatarShop({
                   key={item.id}
                   item={item}
                   worn={worn}
+                  slotLabel={searchItems ? SLOT_LABELS.get(slot) : undefined}
                   onToggle={() => {
                     // 點已穿的卡片 → 脫下；否則穿上（同 slot 取代），
                     // 髮型/臉型套用目前選取的顏色。麵包屑跟著顯示該裝備路徑。

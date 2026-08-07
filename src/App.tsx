@@ -7,7 +7,7 @@ import {
   type KeyboardEvent,
   type PointerEvent,
 } from "react";
-import { Cloud, Folder, FolderSync } from "lucide-react";
+import { Cloud, Folder, FolderSync, Moon, Sun } from "lucide-react";
 import {
   getAudio,
   getDataSource,
@@ -599,7 +599,11 @@ export default function App() {
           title={theme === "dark" ? "切換為淺色" : "切換為深色"}
           aria-label="切換主題"
         >
-          {theme === "dark" ? "☀" : "☾"}
+                   {theme === "dark" ? (
+            <Sun aria-hidden="true" size={15} strokeWidth={2.25} />
+          ) : (
+            <Moon aria-hidden="true" size={15} strokeWidth={2.25} />
+          )}
         </button>
       </header>
 
