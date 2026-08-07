@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   getImage,
   getSkillBook,
@@ -118,7 +118,10 @@ export function SkillBookPage({
   const [level, setLevel] = useState(1);
   const [hoveredSkill, setHoveredSkill] = useState<string | null>(null);
   const [frameUrl, setFrameUrl] = useState<string | null>(null);
+  // 中欄技能圖示縮放倍率（Ctrl+滾輪調整，1 = 原始大小）。
+  const [zoom, setZoom] = useState(1);
   const detailGenerationRef = useRef(0);
+  const windowRef = useRef<HTMLElement | null>(null);
 
   // 經典視窗邊框（整個 session 只組一次；失敗時退回素色卡片）。
   useEffect(() => {
@@ -130,6 +133,24 @@ export function SkillBookPage({
       active = false;
     };
   }, []);
+
+  // Ctrl+滾輪縮放中欄圖示。React 的 onWheel 是 passive listener 無法
+  // preventDefault（會跟頁面捲動打架），所以用原生 listener 掛 non-passive。
+  // 元件保持掛載但視窗在資料載入後才出現，依 book 重新綁定。
+  useEffect(() => {
+    const element = windowRef.current;
+    if (!element) return;
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey) return;
+      event.preventDefault();
+      const step = event.deltaY < 0 ? 0.1 : -0.1;
+      setZoom((current) =>
+        Math.min(2.5, Math.max(0.6, Math.round((current + step) * 10) / 10)),
+      );
+    };
+    element.addEventListener("wheel", onWheel, { passive: false });
+    return () => element.removeEventListener("wheel", onWheel);
+  }, [book]);
 
   // 清單只載入一次（此元件掛載後保持不卸載）。
   useEffect(() => {
@@ -338,8 +359,14 @@ export function SkillBookPage({
         </aside>
 
         <section
+          ref={windowRef}
           className={`skill-window${frameUrl ? " has-frame" : ""}`}
-          style={frameUrl ? { borderImageSource: `url(${frameUrl})` } : undefined}
+          style={
+            {
+              "--skill-zoom": zoom,
+              ...(frameUrl ? { borderImageSource: `url(${frameUrl})` } : {}),
+            } as CSSProperties
+          }
         >
           <div className="skill-window-title">
             <span>
@@ -348,6 +375,14 @@ export function SkillBookPage({
                 : "技能"}
             </span>
             <span className="skill-window-count">
+              <button
+                type="button"
+                className="skill-zoom-reset"
+                title="Ctrl+滾輪縮放圖示，點擊恢復 100%"
+                onClick={() => setZoom(1)}
+              >
+                {Math.round(zoom * 100)}%
+              </button>
               {currentGroup ? `${currentGroup.skills.length} 個技能` : ""}
             </span>
           </div>

@@ -3435,7 +3435,7 @@ button.monster-drop:focus-visible {
 .skill-window {
   place-self: center;
   display: flex;
-  width: min(480px, calc(100% - 32px));
+  width: min(1100px, calc(100% - 32px));
   max-height: calc(100% - 32px);
   min-width: 0;
   flex-direction: column;
@@ -3478,8 +3478,23 @@ button.monster-drop:focus-visible {
 }
 
 .skill-window-count {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-weight: 400;
   opacity: 0.75;
+}
+
+/* Ctrl+滾輪縮放的重設鈕（同時作為目前倍率提示）。 */
+.skill-zoom-reset {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
 }
 
 .skill-grid-scroll {
@@ -3509,18 +3524,19 @@ button.monster-drop:focus-visible {
   font-weight: 400;
 }
 
+/* 圖示格尺寸乘上 --skill-zoom（Ctrl+滾輪縮放，預設 1）。 */
 .skill-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, 46px);
+  grid-template-columns: repeat(auto-fill, calc(46px * var(--skill-zoom, 1)));
   justify-content: center;
-  gap: 10px;
+  gap: calc(10px * var(--skill-zoom, 1));
 }
 
 .skill-cell {
   position: relative;
   display: grid;
-  width: 46px;
-  height: 46px;
+  width: calc(46px * var(--skill-zoom, 1));
+  height: calc(46px * var(--skill-zoom, 1));
   place-items: center;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
@@ -3532,8 +3548,8 @@ button.monster-drop:focus-visible {
 }
 
 .skill-cell img {
-  width: 34px;
-  height: 34px;
+  width: calc(34px * var(--skill-zoom, 1));
+  height: calc(34px * var(--skill-zoom, 1));
   object-fit: contain;
   image-rendering: pixelated;
 }
@@ -3554,13 +3570,13 @@ button.monster-drop:focus-visible {
   position: absolute;
   right: -5px;
   bottom: -5px;
-  min-width: 15px;
+  min-width: calc(15px * var(--skill-zoom, 1));
   border-radius: var(--radius-xs);
   background: var(--accent);
   color: var(--on-accent);
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 9px;
-  line-height: 13px;
+  font-size: calc(9px * var(--skill-zoom, 1));
+  line-height: calc(13px * var(--skill-zoom, 1));
   text-align: center;
 }
 
@@ -3582,6 +3598,12 @@ button.monster-drop:focus-visible {
   height: 32px;
   border-radius: var(--radius-sm);
   background: var(--skeleton-base);
+}
+
+/* 空格 placeholder 跟著中欄縮放（右欄 hero 等其他用法維持原尺寸）。 */
+.skill-cell .skill-icon-empty {
+  width: calc(32px * var(--skill-zoom, 1));
+  height: calc(32px * var(--skill-zoom, 1));
 }
 
 .skill-window-empty {
