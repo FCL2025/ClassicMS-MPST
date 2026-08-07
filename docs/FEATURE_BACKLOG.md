@@ -26,10 +26,11 @@
   - 內容：NPC 列表、外觀動畫、台詞、所在位置
   - 難度：中（對話腳本格式需先摸清）
 
-- [ ] **任務資料庫**
+- [x] **任務資料庫**（2026-08-07 完成，v0.27.0）
   - 資料：`Quest/`（Act/Check/Say/QuestInfo 等 7 img）+ `String/TW/QuestData`、`QuestCategory`
-  - 內容：任務列表、前置條件、需求道具/怪物、獎勵
-  - 難度：中
+  - 實作：三欄配置（系列書架／NPC 對話舞台／任務日誌）、對話逐段推進含接受/婉拒分支、
+    系列任務章節翻頁、`#p#` NPC 引用代換名字、需求/獎勵道具 icon + tooltip
+  - 後端 `quest.rs`：`get_quest_book`（494 任務 / 65 系列）+ `get_quest_detail`
 
 - [ ] **全物品資料庫**（消耗/裝飾/其他/寵物/特殊）
   - 資料：`Item/`（Cash 40、Consume 31、Etc 16、Pet 42 等 139 img）+ `String/TW/Item`

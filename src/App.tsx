@@ -34,6 +34,7 @@ import { ExportMenu } from "./components/ExportMenu";
 import { ChangelogDialog } from "./components/ChangelogDialog";
 import { MonsterBookPage } from "./components/MonsterBookPage";
 import { SkillBookPage } from "./components/SkillBookPage";
+import { QuestPage } from "./components/QuestPage";
 import { NodeDetail } from "./components/NodeDetail";
 import { SearchBar } from "./components/SearchBar";
 import { TreeView } from "./components/TreeView";
@@ -104,14 +105,16 @@ export default function App() {
   const [treeWidth, setTreeWidth] = useState(initialTreeWidth);
   const [resizingTree, setResizingTree] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
-  // 頂部 view 切換：瀏覽（資產樹）/ 紙娃娃（角色試穿）/ 怪物圖鑑 / 技能。
-  const [view, setView] = useState<"tree" | "avatar" | "monster" | "skill">("tree");
+  // 頂部 view 切換：瀏覽（資產樹）/ 紙娃娃（角色試穿）/ 怪物圖鑑 / 技能 / 任務。
+  const [view, setView] = useState<"tree" | "avatar" | "monster" | "skill" | "quest">("tree");
   // 紙娃娃第一次切過去才掛載（meta/equipment 此時才載入），之後保持掛載不重置狀態。
   const [avatarActivated, setAvatarActivated] = useState(false);
   // 怪物圖鑑同樣 lazy-mount（第一次切過去才載入圖鑑清單）。
   const [monsterActivated, setMonsterActivated] = useState(false);
   // 技能瀏覽器同樣 lazy-mount（第一次切過去才載入技能書）。
   const [skillActivated, setSkillActivated] = useState(false);
+  // 任務資料庫同樣 lazy-mount（第一次切過去才載入任務清單）。
+  const [questActivated, setQuestActivated] = useState(false);
   // 紙娃娃商店的「點裝」開關：ON 時只列 cash 裝備（App 持有，切 view 不重置）。
   const [cashOnly, setCashOnly] = useState(false);
   // 紙娃娃 BGM：切到紙娃娃 tab 時循環播放 Sound/BgmUI/ShopBgm；false 表示使用者手動暫停。
@@ -124,6 +127,8 @@ export default function App() {
   const [mobPick, setMobPick] = useState<string | null>(null);
   // 技能瀏覽器最後選取的技能路徑（footer 麵包屑用）。
   const [skillPick, setSkillPick] = useState<string | null>(null);
+  // 任務資料庫最後選取的任務路徑（footer 麵包屑用）。
+  const [questPick, setQuestPick] = useState<string | null>(null);
   const treeWidthRef = useRef(treeWidth);
   const childrenMapRef = useRef(childrenMap);
   const childRequestsRef = useRef(new Map<string, Promise<void>>());
@@ -339,7 +344,7 @@ export default function App() {
     storedFolderLabel()
       .then((label) => setReconnectLabel(label))
       .catch(() => undefined);
-    // 自動化測試用：MSCLASSIC_INITIAL_VIEW 可指定啟動 view（tree/avatar/monster/skill）。
+    // 自動化測試用：MSCLASSIC_INITIAL_VIEW 可指定啟動 view（tree/avatar/monster/skill/quest）。
     initialView()
       .then((target) => {
         if (target === "avatar") {
@@ -351,6 +356,9 @@ export default function App() {
         } else if (target === "skill") {
           setView("skill");
           setSkillActivated(true);
+        } else if (target === "quest") {
+          setView("quest");
+          setQuestActivated(true);
         }
       })
       .catch(() => undefined);
@@ -491,6 +499,20 @@ export default function App() {
           >
             技能
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "quest"}
+            className={view === "quest" ? "is-active" : ""}
+            disabled={!openInfo}
+            title={openInfo ? "任務資料庫" : "請先選擇資料夾"}
+            onClick={() => {
+              setView("quest");
+              setQuestActivated(true);
+            }}
+          >
+            任務
+          </button>
         </div>
         <div className="header-divider" aria-hidden="true" />
         <ExportMenu
@@ -630,7 +652,7 @@ export default function App() {
 
       {openInfo ? (
         <div
-          className={`app-body${view === "avatar" ? " is-avatar" : ""}${view === "monster" ? " is-monster" : ""}${view === "skill" ? " is-skill" : ""}`}
+          className={`app-body${view === "avatar" ? " is-avatar" : ""}${view === "monster" ? " is-monster" : ""}${view === "skill" ? " is-skill" : ""}${view === "quest" ? " is-quest" : ""}`}
           style={workspaceStyle}
         >
           {view === "tree" ? (
@@ -689,6 +711,9 @@ export default function App() {
             ) : null}
             {skillActivated || view === "skill" ? (
               <SkillBookPage visible={view === "skill"} onPickSkill={setSkillPick} />
+            ) : null}
+            {questActivated || view === "quest" ? (
+              <QuestPage visible={view === "quest"} onPickQuest={setQuestPick} />
             ) : null}
           </main>
         </div>
@@ -775,7 +800,9 @@ export default function App() {
               ? (mobPick ?? undefined)
               : view === "skill"
                 ? (skillPick ?? undefined)
-                : (selected?.path ?? undefined)
+                : view === "quest"
+                  ? (questPick ?? undefined)
+                  : (selected?.path ?? undefined)
         }
       >
         {view === "avatar" ? (
@@ -792,6 +819,11 @@ export default function App() {
           <>
             <span className="footer-node-type">{skillPick ? "類型：img" : ""}</span>
             <span className="footer-node-path">{skillPick ?? ""}</span>
+          </>
+        ) : view === "quest" ? (
+          <>
+            <span className="footer-node-type">{questPick ? "類型：img" : ""}</span>
+            <span className="footer-node-path">{questPick ?? ""}</span>
           </>
         ) : (
           <>

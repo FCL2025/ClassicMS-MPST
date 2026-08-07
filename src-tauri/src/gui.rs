@@ -16,6 +16,7 @@ use crate::commodity::CommodityItem;
 use crate::export::{ExportStats, FileExportResult};
 use crate::item_tooltip::ItemTooltip;
 use crate::monster::{MobDetail, MonsterSummary};
+use crate::quest::{QuestDetail, QuestSummary};
 use crate::skill::{SkillDetail, SkillJobGroup};
 
 #[derive(Clone)]
@@ -418,6 +419,36 @@ async fn get_skill_detail(
     .await
 }
 
+/// 任務清單（QuestData）：名稱/系列/地區/等級範圍/起始 NPC/後續任務由後端聚合，一次拿完。
+#[tauri::command]
+async fn get_quest_book(state: State<'_, AppState>) -> Result<Vec<QuestSummary>, String> {
+    let state = state.inner().clone();
+    blocking(move || {
+        let (service, _) = state.current_or_open(None)?;
+        service
+            .get_quest_book()
+            .map(|book| (*book).clone())
+            .map_err(|error| error.to_string())
+    })
+    .await
+}
+
+/// 單一任務明細：對話腳本、需求與獎勵。
+#[tauri::command]
+async fn get_quest_detail(
+    quest_id: String,
+    state: State<'_, AppState>,
+) -> Result<QuestDetail, String> {
+    let state = state.inner().clone();
+    blocking(move || {
+        let (service, _) = state.current_or_open(None)?;
+        service
+            .get_quest_detail(&quest_id)
+            .map_err(|error| error.to_string())
+    })
+    .await
+}
+
 #[tauri::command]
 async fn search_nodes(
     query: String,
@@ -530,6 +561,8 @@ pub fn run() {
             get_mob_detail,
             get_skill_book,
             get_skill_detail,
+            get_quest_book,
+            get_quest_detail,
             search_nodes,
             export_subtree,
             export_file,

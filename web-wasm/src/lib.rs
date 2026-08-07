@@ -196,6 +196,24 @@ pub fn get_skill_detail(job: &str, skill_id: &str) -> Result<JsValue, JsValue> {
         .and_then(|v| to_js(&v))
 }
 
+/// 任務清單：回 `QuestSummary[]`（camelCase），語意對齊 gui.rs 的 get_quest_book。
+#[wasm_bindgen]
+pub fn get_quest_book() -> Result<JsValue, JsValue> {
+    with_service(|s| {
+        s.get_quest_book()
+            .map(|book| (*book).clone())
+            .map_err(|e| e.to_string())
+    })
+    .and_then(|v| to_js(&v))
+}
+
+/// 單一任務明細：回 `QuestDetail`（camelCase），語意對齊 gui.rs 的 get_quest_detail。
+#[wasm_bindgen]
+pub fn get_quest_detail(quest_id: &str) -> Result<JsValue, JsValue> {
+    with_service(|s| s.get_quest_detail(quest_id).map_err(|e| e.to_string()))
+        .and_then(|v| to_js(&v))
+}
+
 /// 紙娃娃基本資料：回 `AvatarMeta`（camelCase），語意對齊 gui.rs 的 get_avatar_meta。
 #[wasm_bindgen]
 pub fn get_avatar_meta() -> Result<JsValue, JsValue> {

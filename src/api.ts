@@ -176,6 +176,76 @@ export interface SkillDetail {
   levels: Record<string, Record<string, number | string | [number, number]>>;
 }
 
+/** 任務清單項目（對齊 quest.rs 的 serde 輸出）。 */
+export interface QuestSummary {
+  id: string;
+  name: string | null;
+  parent: string | null;
+  area: number | null;
+  levelMin: number | null;
+  levelMax: number | null;
+  startNpcId: number | null;
+  startNpcName: string | null;
+  nextQuestId: string | null;
+}
+
+/** 任務相關的道具參照（count 負值表示交付/消耗）。 */
+export interface QuestItemRef {
+  id: number;
+  count: number;
+  name: string | null;
+}
+
+/** 任務需求怪物參照。 */
+export interface QuestMobRef {
+  id: number;
+  count: number;
+  name: string | null;
+}
+
+/** 任務參照（前置任務 / 下個任務）。 */
+export interface QuestRef {
+  id: string;
+  name: string | null;
+}
+
+/** 單一任務階段（開始 / 完成）的 NPC 對話腳本。 */
+export interface QuestDialogueStage {
+  npcId: number | null;
+  npcName: string | null;
+  lines: string[];
+  ask: string[];
+  yes: string[];
+  no: string[];
+  stopNpc: string[];
+  stopItem: string[];
+  lost: string[];
+}
+
+/** 單一任務完整明細。 */
+export interface QuestDetail {
+  id: string;
+  name: string | null;
+  parent: string | null;
+  area: number | null;
+  levelMin: number | null;
+  levelMax: number | null;
+  jobs: number[];
+  info: Record<string, string>;
+  start: QuestDialogueStage | null;
+  end: QuestDialogueStage | null;
+  startRequirements: { items: QuestItemRef[]; preQuests: QuestRef[] };
+  requirements: { items: QuestItemRef[]; mobs: QuestMobRef[]; preQuests: QuestRef[] };
+  rewards: {
+    exp: number | null;
+    mesos: number | null;
+    popularity: number | null;
+    items: QuestItemRef[];
+    nextQuest: QuestRef | null;
+  };
+  interval: number | null;
+}
+
 export interface ExportStats {
   out_dir: string;
   json_files: number;
@@ -273,6 +343,9 @@ export const getMobDropIcon = async (itemId: number): Promise<string | null> =>
 export const getSkillBook = () => invoke<SkillJobGroup[]>("get_skill_book");
 export const getSkillDetail = (job: string, skillId: string) =>
   invoke<SkillDetail>("get_skill_detail", { job, skillId });
+export const getQuestBook = () => invoke<QuestSummary[]>("get_quest_book");
+export const getQuestDetail = (questId: string) =>
+  invoke<QuestDetail>("get_quest_detail", { questId });
 export const getAvatarMeta = () => invoke<AvatarMeta>("get_avatar_meta");
 export const getAvatarEmotions = (faceId: string) =>
   invoke<string[]>("get_avatar_emotions", { faceId });

@@ -77,6 +77,12 @@ export type {
   OpenInfo,
   OpenResult,
   PartInput,
+  QuestDetail,
+  QuestDialogueStage,
+  QuestItemRef,
+  QuestMobRef,
+  QuestRef,
+  QuestSummary,
   SearchHit,
   SkillCategory,
   SkillDetail,
@@ -106,6 +112,8 @@ import type {
   NodeDetail,
   OpenResult,
   PartInput,
+  QuestDetail,
+  QuestSummary,
   SearchHit,
   SkillDetail,
   SkillJobGroup,
@@ -195,6 +203,11 @@ export const getSkillBook = (): Promise<SkillJobGroup[]> => backend().getSkillBo
 export const getSkillDetail = (job: string, skillId: string): Promise<SkillDetail> =>
   backend().getSkillDetail(job, skillId);
 
+export const getQuestBook = (): Promise<QuestSummary[]> => backend().getQuestBook();
+
+export const getQuestDetail = (questId: string): Promise<QuestDetail> =>
+  backend().getQuestDetail(questId);
+
 export const getAvatarMeta = (): Promise<AvatarMeta> => backend().getAvatarMeta();
 
 export const getAvatarEmotions = (faceId: string): Promise<string[]> =>
@@ -245,11 +258,15 @@ export const initialDataDir = (): Promise<string | null> => backend().initialDat
 
 export const initialPath = (): Promise<string | null> => Promise.resolve(null);
 
-/** 支援 `?view=tree|avatar|monster|skill` 深連結（兩種來源通用）。 */
+/** 支援 `?view=tree|avatar|monster|skill|quest` 深連結（兩種來源通用）。 */
 export const initialView = (): Promise<string | null> => {
   const view = new URLSearchParams(window.location.search).get("view");
   return Promise.resolve(
-    view === "tree" || view === "avatar" || view === "monster" || view === "skill"
+    view === "tree" ||
+      view === "avatar" ||
+      view === "monster" ||
+      view === "skill" ||
+      view === "quest"
       ? view
       : null,
   );

@@ -595,6 +595,10 @@ fn export_features(
         let book = svc.get_skill_book()?;
         Ok((serde_json::to_vec(&*book)?, book.len()))
     });
+    feature_step(&features_dir, "quest_book.json", stats, || {
+        let book = svc.get_quest_book()?;
+        Ok((serde_json::to_vec(&*book)?, book.len()))
+    });
     feature_step(&features_dir, "commodity.json", stats, || {
         let items = svc.get_commodity_items()?;
         Ok((serde_json::to_vec(&items)?, items.len()))

@@ -3965,3 +3965,669 @@ button.monster-drop:focus-visible {
   color: var(--on-accent);
   opacity: 0.72;
 }
+
+/* ═══ 任務資料庫 ═══
+   左 270px 書架（系列書卡）/ 中 NPC 對話舞台 / 右 360px 任務日誌。
+   日誌外框素材同技能視窗：classicFrame.ts 從 UI/UIWindow/Quest/backgrnd 裁九宮格；
+   素材不可用時退回素色卡片（無 .has-frame）。 */
+
+/* 同技能瀏覽器：沒有樹狀區，右半整塊給 QuestPage。 */
+.app-body.is-quest {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app-body.is-quest .app-right {
+  overflow: hidden;
+  padding: 0;
+}
+
+.quest-page {
+  display: grid;
+  height: 100%;
+  min-height: 0;
+  grid-template-columns: 270px minmax(0, 1fr) 360px;
+}
+
+.quest-page[hidden] {
+  display: none;
+}
+
+.quest-page-status {
+  grid-column: 1 / -1;
+  align-self: center;
+  justify-self: center;
+  margin: 0;
+  padding: 20px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+/* ── 左欄：書架 ── */
+
+.quest-shelf {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  border-right: 1px solid var(--border-strong);
+  background: var(--surface-raised);
+}
+
+.quest-search {
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.quest-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--button-bg);
+  color: var(--text-strong);
+  padding: 4px 8px;
+  font-size: 0.75rem;
+}
+
+.quest-shelf-scroll {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+/* 系列書卡：左邊粗框當書脊。 */
+.quest-book-card {
+  border: 1px solid var(--border-strong);
+  border-left: 4px solid #8b5a2b;
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, var(--surface), var(--panel));
+  padding: 6px;
+}
+
+.quest-book-card.is-single {
+  border-left-color: var(--border-strong);
+}
+
+.quest-book-card h3 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 4px;
+  border-bottom: 1px dashed var(--border);
+  padding: 0 4px 4px;
+}
+
+.quest-book-title {
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quest-book-count {
+  flex: 0 0 auto;
+  color: var(--subtle);
+  font-size: 0.62rem;
+}
+
+.quest-shelf-item {
+  display: grid;
+  width: 100%;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  padding: 4px 6px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.quest-book-card.is-single .quest-shelf-item {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.quest-shelf-item:hover {
+  background: var(--selection-hover);
+}
+
+.quest-shelf-item.is-active {
+  background: var(--selection);
+}
+
+.quest-shelf-chapter {
+  min-width: 2ch;
+  color: var(--subtle);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 0.62rem;
+  text-align: right;
+}
+
+.quest-shelf-name {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.74rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quest-shelf-level {
+  color: var(--subtle);
+  font-size: 0.62rem;
+  white-space: nowrap;
+}
+
+.quest-list-empty {
+  padding: 16px 12px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  text-align: center;
+}
+
+/* ── 中欄：NPC 對話舞台 ── */
+
+.quest-stage {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  overflow-y: auto;
+  padding: 14px;
+}
+
+.quest-stage-tabs {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 2px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--panel-strong);
+  padding: 2px;
+}
+
+.quest-stage-tabs button {
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  padding: 3px 14px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.quest-stage-tabs button:not(.is-active):hover {
+  color: var(--text-strong);
+}
+
+.quest-stage-tabs button.is-active {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.quest-npc {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.quest-npc-portrait {
+  display: grid;
+  width: 148px;
+  height: 148px;
+  place-items: center;
+  overflow: hidden;
+}
+
+/* 原圖多為 40~80px 小圖，放大填滿外框（pixelated 保持像素感）。 */
+.quest-npc-portrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.quest-npc-portrait.is-empty {
+  border: 1px dashed var(--border-strong);
+  border-radius: 50%;
+  color: var(--subtle);
+  font-size: 1.6rem;
+}
+
+.quest-npc-plate {
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--panel-strong);
+  padding: 2px 14px;
+  color: var(--text-strong);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.quest-dialogue {
+  display: flex;
+  width: min(560px, 100%);
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  animation: quest-fade 0.2s ease;
+}
+
+.quest-dialogue-inner {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.quest-bubble-scroll {
+  display: flex;
+  min-height: 120px;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  padding: 6px 4px 2px;
+}
+
+/* 楓之谷風格白底圓角氣泡，小尾巴指向 NPC。 */
+.quest-bubble {
+  position: relative;
+  flex: 0 0 auto;
+  border: 1px solid #b9c4d6;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgb(15 35 55 / 0.18);
+  padding: 9px 12px;
+}
+
+.quest-bubble::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 28px;
+  width: 10px;
+  height: 10px;
+  border-top: 1px solid #b9c4d6;
+  border-left: 1px solid #b9c4d6;
+  background: #ffffff;
+  transform: rotate(45deg);
+}
+
+.quest-bubble-text p {
+  margin: 0;
+  color: #1c2a3d;
+  font-size: 0.78rem;
+  line-height: 1.7;
+}
+
+.quest-bubble-text mark {
+  background: none;
+  color: #1f66d1;
+  font-weight: 700;
+}
+
+.quest-dialogue-empty {
+  margin: auto;
+  padding: 12px;
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.quest-dialogue-controls {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: center;
+  gap: 8px;
+}
+
+.quest-dialogue-controls button {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--button-bg);
+  color: var(--text-strong);
+  padding: 4px 18px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.quest-dialogue-controls button:hover {
+  border-color: var(--accent);
+}
+
+.quest-dialogue-controls .quest-choice-yes {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.quest-chapters {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.quest-chapters button {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--button-bg);
+  color: var(--text-strong);
+  padding: 2px 10px;
+  cursor: pointer;
+}
+
+.quest-chapters button:disabled {
+  color: var(--disabled);
+  cursor: default;
+}
+
+@keyframes quest-fade {
+  from {
+    opacity: 0.3;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* ── 右欄：任務日誌 ── */
+
+.quest-log {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  margin: 14px 14px 14px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.quest-log.has-frame {
+  border: 7px solid transparent;
+  border-width: 17px 7px 27px;
+  border-image-slice: 17 7 27 7 fill;
+  border-image-repeat: stretch;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: 0 2px 6px rgb(15 35 55 / 0.35);
+}
+
+.quest-log-scroll {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.quest-log-header h2 {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: 0.95rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quest-log-parent {
+  margin: 2px 0 0;
+  color: var(--subtle);
+  font-size: 0.66rem;
+}
+
+.quest-log-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.quest-chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+  color: var(--muted);
+  font-size: 0.62rem;
+  line-height: 15px;
+  white-space: nowrap;
+}
+
+.quest-chip.is-level {
+  border-color: var(--border-strong);
+  color: var(--text-strong);
+  font-weight: 700;
+}
+
+.quest-log-section h3 {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.quest-log-text p {
+  margin: 0 0 6px;
+  color: var(--text);
+  font-size: 0.74rem;
+  line-height: 1.7;
+}
+
+.quest-log-text mark {
+  background: none;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.quest-log-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.quest-log-label {
+  color: var(--subtle);
+  font-size: 0.64rem;
+}
+
+.quest-log-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.quest-ref-link {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--accent);
+  padding: 1px 10px;
+  font-size: 0.68rem;
+  cursor: pointer;
+}
+
+.quest-ref-link:hover {
+  text-decoration: underline;
+}
+
+.quest-item-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.quest-item-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  padding: 3px 8px 3px 3px;
+}
+
+.quest-item-chip.is-deliver {
+  border-style: dashed;
+}
+
+.quest-item-icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+}
+
+.quest-item-icon img {
+  max-width: 28px;
+  max-height: 28px;
+  image-rendering: pixelated;
+}
+
+.quest-item-name {
+  color: var(--text);
+  font-size: 0.68rem;
+}
+
+.quest-item-count {
+  color: var(--subtle);
+  font-size: 0.62rem;
+  white-space: nowrap;
+}
+
+.quest-item-chip.is-deliver .quest-item-count {
+  color: var(--warning);
+}
+
+.quest-rewards {
+  display: grid;
+  margin: 0 0 6px;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px 14px;
+}
+
+.quest-reward {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px dashed var(--border);
+  padding: 2px 0;
+}
+
+.quest-reward dt {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.quest-reward dd {
+  margin: 0;
+  color: var(--text-strong);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 0.7rem;
+}
+
+.quest-log-empty {
+  margin: 0;
+  color: var(--subtle);
+  font-size: 0.68rem;
+}
+
+/* 道具 hover tooltip（比照 monster-drop-tooltip，向上長）。 */
+.quest-item-tooltip {
+  position: fixed;
+  z-index: 60;
+  transform: translateY(-100%);
+}
+
+/* 有遊戲外框時內容是白底，文字改固定深色。 */
+.quest-log.has-frame .quest-log-header h2 {
+  color: #16324f;
+}
+
+.quest-log.has-frame .quest-log-parent {
+  color: #5a6b82;
+}
+
+.quest-log.has-frame .quest-log-section h3 {
+  color: #6b7c93;
+}
+
+.quest-log.has-frame .quest-log-text p {
+  color: #1c2a3d;
+}
+
+.quest-log.has-frame .quest-log-text mark {
+  color: #1f66d1;
+}
+
+.quest-log.has-frame .quest-chip {
+  border-color: #b9c4d6;
+  color: #5a6b82;
+}
+
+.quest-log.has-frame .quest-chip.is-level {
+  color: #16324f;
+}
+
+.quest-log.has-frame .quest-log-label {
+  color: #7c8ca0;
+}
+
+.quest-log.has-frame .quest-item-chip {
+  border-color: #c6d0de;
+  background: #f4f7fb;
+}
+
+.quest-log.has-frame .quest-item-name {
+  color: #1c2a3d;
+}
+
+.quest-log.has-frame .quest-item-count {
+  color: #7c8ca0;
+}
+
+.quest-log.has-frame .quest-item-chip.is-deliver .quest-item-count {
+  color: #b26a00;
+}
+
+.quest-log.has-frame .quest-reward {
+  border-color: #d5dde8;
+}
+
+.quest-log.has-frame .quest-reward dt {
+  color: #6b7c93;
+}
+
+.quest-log.has-frame .quest-reward dd {
+  color: #16324f;
+}
+
+.quest-log.has-frame .quest-ref-link {
+  border-color: #c6d0de;
+  color: #1f66d1;
+}
+
+.quest-log.has-frame .quest-log-empty {
+  color: #7c8ca0;
+}

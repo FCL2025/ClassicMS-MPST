@@ -221,27 +221,70 @@ export interface MapleLine {
 }
 
 /**
- * 解析楓之谷字串：換行是字面 `\n` 兩字元（偶爾 `\#` 是轉義的 #），
- * `#c…#` 包住的片段是要強調的文字；其他 #token（如 #prop）原樣保留。
+ * 解析楓之谷字串：換行是字面 `\n` 兩字元（偶爾 `\#` 是轉義的 #）。
+ * 標記處理：`#c…#` 自足強調、`#b…#k` 區間強調（任務文本常用）、
+ * `#p2101#` / `#i4031003#` / `#o…#` / `#m…#` 引用標記不查表直接去掉；
+ * 其他 #token（如 #prop）原樣保留。
  */
 export function parseMapleText(raw: string): MapleLine[] {
-  const normalized = raw.replace(/\\n/g, "\n").replace(/\\#/g, "#");
-  return normalized.split("\n").map((line) => {
-    const segments: TextSegment[] = [];
-    // 以 # 切開後奇數段是被包住的片段；開頭 c 是強調標記。
-    line.split("#").forEach((part, index) => {
-      if (!part) return;
-      if (index % 2 === 0) {
-        segments.push({ text: part, accent: false });
-      } else if (part.startsWith("c")) {
-        const text = part.slice(1);
-        if (text) segments.push({ text, accent: true });
-      } else {
-        segments.push({ text: `#${part}`, accent: false });
+  // 轉義的 \# 先換成 NUL 佔位，避免被當成標記起點，最後再還原。
+  const normalized = raw.replace(/\\n/g, "\n").replace(/\\#/g, "\0");
+  return normalized.split("\n").map((line) => ({ segments: parseMapleLine(line) }));
+}
+
+function parseMapleLine(line: string): TextSegment[] {
+  const segments: TextSegment[] = [];
+  let accent = false;
+  let buffer = "";
+  const flush = () => {
+    if (buffer) {
+      segments.push({ text: buffer.replace(/\0/g, "#"), accent });
+      buffer = "";
+    }
+  };
+  let i = 0;
+  while (i < line.length) {
+    // 區間強調標記（不自閉合，文字直接接在後面）。
+    if (line.startsWith("#b", i)) {
+      flush();
+      accent = true;
+      i += 2;
+      continue;
+    }
+    if (line.startsWith("#k", i)) {
+      flush();
+      accent = false;
+      i += 2;
+      continue;
+    }
+    // 引用標記（NPC/道具/怪物/地圖）：不查表，整個去掉。
+    const ref = /^#[piom]\d+#/.exec(line.slice(i));
+    if (ref) {
+      i += ref[0].length;
+      continue;
+    }
+    if (line[i] === "#") {
+      const end = line.indexOf("#", i + 1);
+      if (end > i + 1) {
+        const token = line.slice(i + 1, end);
+        // 自足強調標記 #c…#。
+        if (token.startsWith("c")) {
+          flush();
+          if (token.length > 1) segments.push({ text: token.slice(1), accent: true });
+          i = end + 1;
+          continue;
+        }
       }
-    });
-    return { segments };
-  });
+      // 未知或未閉合標記：# 視為一般字元。
+      buffer += "#";
+      i += 1;
+      continue;
+    }
+    buffer += line[i];
+    i += 1;
+  }
+  flush();
+  return segments;
 }
 
 /**

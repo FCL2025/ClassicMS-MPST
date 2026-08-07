@@ -488,6 +488,9 @@ pub struct DataService {
     pub(crate) monster_name_cache: crate::monster::MonsterNameCache,
     pub(crate) skill_book_cache: crate::skill::SkillBookCache,
     pub(crate) skill_string_cache: crate::skill::SkillStringCache,
+    pub(crate) quest_book_cache: crate::quest::QuestBookCache,
+    pub(crate) quest_data_cache: crate::quest::QuestDataCache,
+    pub(crate) quest_name_cache: crate::quest::QuestNameCache,
 }
 
 #[derive(Default)]
@@ -586,6 +589,9 @@ impl DataService {
             monster_name_cache: Default::default(),
             skill_book_cache: Default::default(),
             skill_string_cache: Default::default(),
+            quest_book_cache: Default::default(),
+            quest_data_cache: Default::default(),
+            quest_name_cache: Default::default(),
         };
         service.validate_locations()?;
         Ok((service, info))
@@ -628,6 +634,9 @@ impl DataService {
             monster_name_cache: Default::default(),
             skill_book_cache: Default::default(),
             skill_string_cache: Default::default(),
+            quest_book_cache: Default::default(),
+            quest_data_cache: Default::default(),
+            quest_name_cache: Default::default(),
         };
         service.validate_locations()?;
         Ok((service, info))
