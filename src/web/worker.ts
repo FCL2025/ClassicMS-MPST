@@ -47,6 +47,36 @@ const ready: Promise<Shims> = (async () => {
 let bundleHandles: FileSystemSyncAccessHandle[] = [];
 let cacheHandle: FileSystemSyncAccessHandle | null = null;
 
+// 開啟流程互斥鎖:openCached / importBundles 同時間只允許一個。
+// OPFS 的 sync handle 對同一檔案全站互斥,兩個 open 並發時
+// createSyncAccessHandle 會互撞(啟動自動載入 + 手動重連、連點等)。
+let openQueue: Promise<unknown> = Promise.resolve();
+
+function enqueueOpen<T>(task: () => Promise<T>): Promise<T> {
+  const run = openQueue.then(task, task);
+  openQueue = run.catch(() => undefined);
+  return run;
+}
+
+/** createSyncAccessHandle 的互斥錯誤換成可操作的提示(最常見:另一個分頁也開著本機資料)。 */
+async function createSyncHandle(
+  fileHandle: FileSystemFileHandle,
+): Promise<FileSystemSyncAccessHandle> {
+  try {
+    return await fileHandle.createSyncAccessHandle();
+  } catch (error) {
+    const name = error instanceof DOMException ? error.name : "";
+    const message = error instanceof Error ? error.message : String(error);
+    if (name === "NoModificationAllowedError" || /Access Handles? cannot be created/i.test(message)) {
+      throw new Error(
+        "無法開啟本機資料:瀏覽器儲存空間正被占用。" +
+          "請確認沒有其他分頁同時開啟本工具的本機資料模式,關閉那些分頁後再試一次。",
+      );
+    }
+    throw error;
+  }
+}
+
 function report(progress: ImportProgress): void {
   ctx.postMessage({ type: "progress", progress });
 }
@@ -175,7 +205,7 @@ async function syncBundlesToOpfs(files: File[]): Promise<BundleMeta[]> {
   for (const file of changed) {
     fileIndex += 1;
     const fileHandle = await root.getFileHandle(file.name, { create: true });
-    const sync = await fileHandle.createSyncAccessHandle();
+    const sync = await createSyncHandle(fileHandle);
     try {
       sync.truncate(0);
       let offset = 0;
@@ -202,7 +232,7 @@ async function syncBundlesToOpfs(files: File[]): Promise<BundleMeta[]> {
   // 注意:Safari/Firefox 不支援 createWritable,這裡與 bundle 複製一樣
   // 走 Worker 專用的 createSyncAccessHandle。
   const sidecar = await root.getFileHandle(MANIFEST_SIDECAR, { create: true });
-  const sync = await sidecar.createSyncAccessHandle();
+  const sync = await createSyncHandle(sidecar);
   try {
     const record: Record<string, { size: number; lastModified: number }> = {};
     for (const m of manifest) record[m.name] = { size: m.size, lastModified: m.lastModified };
@@ -222,12 +252,31 @@ async function openSyncHandles(shims: Shims, manifest: BundleMeta[]): Promise<vo
   closeHandles();
   const root = await navigator.storage.getDirectory();
   const handles: FileSystemSyncAccessHandle[] = [];
-  for (const meta of manifest) {
-    const fileHandle = await root.getFileHandle(meta.name);
-    handles.push(await fileHandle.createSyncAccessHandle());
+  let cache: FileSystemSyncAccessHandle | null = null;
+  try {
+    for (const meta of manifest) {
+      const fileHandle = await root.getFileHandle(meta.name);
+      handles.push(await createSyncHandle(fileHandle));
+    }
+    const cacheFile = await root.getFileHandle(CATALOG_CACHE_FILE, { create: true });
+    cache = await createSyncHandle(cacheFile);
+  } catch (error) {
+    // 中途失敗時已開的 handle 還不會被 closeHandles 追蹤(bundleHandles 尚未賦值),
+    // 必須就地關掉,否則這些孤兒 handle 會讓之後每次重試都撞到自己。
+    for (const handle of handles) {
+      try {
+        handle.close();
+      } catch {
+        // 忽略:關閉失敗不影響錯誤回報
+      }
+    }
+    try {
+      cache?.close();
+    } catch {
+      // 同上
+    }
+    throw error;
   }
-  const cacheFile = await root.getFileHandle(CATALOG_CACHE_FILE, { create: true });
-  const cache = await cacheFile.createSyncAccessHandle();
   bundleHandles = handles;
   cacheHandle = cache;
   shims.__setSyncHandles(handles, cache);
@@ -253,9 +302,9 @@ async function dispatch(method: string, args: unknown[]): Promise<unknown> {
   const shims = await ready;
   switch (method) {
     case "openCached":
-      return openCached();
+      return enqueueOpen(openCached);
     case "importBundles":
-      return importBundles(args[0] as File[]);
+      return enqueueOpen(() => importBundles(args[0] as File[]));
     case "listChildren":
       return wasm.list_children(args[0] as string);
     case "getNode":
@@ -278,6 +327,10 @@ async function dispatch(method: string, args: unknown[]): Promise<unknown> {
       return wasm.get_skill_book();
     case "getSkillDetail":
       return wasm.get_skill_detail(args[0] as string, args[1] as string);
+    case "getQuestBook":
+      return wasm.get_quest_book();
+    case "getQuestDetail":
+      return wasm.get_quest_detail(args[0] as string);
     case "getAvatarMeta":
       return wasm.get_avatar_meta();
     case "getAvatarEmotions":
