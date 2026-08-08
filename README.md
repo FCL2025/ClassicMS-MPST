@@ -1,6 +1,6 @@
-# 經典服查看工具
+# 新楓之谷：經典版 資料查看工具
 
-以 Tauri 2、React 19 與 Rust 製作的楓之谷經典版資料查看器。程式可索引遊戲的
+以 Tauri 2、React 19 與 Rust 製作的新楓之谷：經典版資料查看器。程式可索引遊戲的
 UnityFS bundles、瀏覽 WZJS 節點、預覽圖片、顯示裝備 tooltip（名稱、需求、
 屬性與 icon，對齊 Harepacker-MPST 的呈現），並將選取內容匯出成 JSON、PNG 或
 不含圖片的 XML。
