@@ -7,12 +7,15 @@ import {
   getQuestBook,
   getQuestDetail,
   type ItemTooltip as ItemTooltipData,
+  type MonsterSummary,
   type QuestDetail,
   type QuestDialogueStage,
   type QuestItemRef,
   type QuestSummary,
 } from "../api";
+import { getDropSources } from "../dropSources";
 import { loadClassicFrame } from "./classicFrame";
+import { DropSourcesDialog, type DropSourceItem, type MobThumbCache } from "./DropSourcesDialog";
 import { DropItemTooltip, ItemTooltip } from "./ItemTooltip";
 import { parseMapleText, type TextSegment } from "./skillJobs";
 
@@ -358,17 +361,19 @@ function isGear(itemId: number): boolean {
   return Math.floor(itemId / 1_000_000) === 1;
 }
 
-/** 需求/獎勵道具：icon 懶載入 + hover tooltip；chance 為抽取機率標籤。 */
+/** 需求/獎勵道具：icon 懶載入 + hover tooltip；chance 為抽取機率標籤；onClick 開啟掉落來源彈窗。 */
 function QuestItemChip({
   item,
   chance,
   onHover,
   onLeave,
+  onClick,
 }: {
   item: QuestItemRef;
   chance?: string;
   onHover: (itemId: number, event: React.MouseEvent, name: string | null) => void;
   onLeave: () => void;
+  onClick?: (item: QuestItemRef) => void;
 }) {
   const [icon, setIcon] = useState<string | null>(null);
   useEffect(() => {
@@ -382,7 +387,21 @@ function QuestItemChip({
   }, [item.id]);
   return (
     <span
-      className="quest-item-chip"
+      className={`quest-item-chip${onClick ? " is-clickable" : ""}`}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      title={onClick ? "查看掉落此道具的怪物" : undefined}
+      onClick={onClick ? () => onClick(item) : undefined}
+      onKeyDown={
+        onClick
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onClick(item);
+              }
+            }
+          : undefined
+      }
       onMouseEnter={(event) => onHover(item.id, event, item.name)}
       onMouseLeave={onLeave}
     >
@@ -407,10 +426,13 @@ function chanceLabel(prop: number, weightTotal: number): string {
 export function QuestPage({
   visible,
   onPickQuest,
+  onOpenMob,
 }: {
   visible: boolean;
   /** 選取任務時回報節點路徑（給 App footer 麵包屑）。 */
   onPickQuest?: (path: string) => void;
+  /** 從掉落來源彈窗點怪物時，切到怪物圖鑑並選取該怪物。 */
+  onOpenMob?: (mobId: number) => void;
 }) {
   const [book, setBook] = useState<QuestSummary[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -577,6 +599,30 @@ export function QuestPage({
   };
 
   const pickQuest = (questId: string) => setSelectedId(questId);
+
+  // 需求道具點擊後的「也掉落此道具的怪物」彈窗；null 表示未開啟。
+  const [dropSources, setDropSources] = useState<DropSourceItem | null>(null);
+  const [dropSourceMobs, setDropSourceMobs] = useState<MonsterSummary[]>([]);
+  // 彈窗怪物縮圖快取：放這層，重開彈窗不重抓。
+  const mobThumbCacheRef = useRef<MobThumbCache>(new Map());
+  const dropSourcesGenerationRef = useRef(0);
+
+  const openDropSources = (item: QuestItemRef) => {
+    hideTip();
+    setDropSources({ itemId: item.id, name: item.name });
+  };
+
+  // 彈窗開啟時載入掉落來源（圖鑑戰利品 ∪ 任務道具補充表，已排序）。
+  useEffect(() => {
+    if (!dropSources) return;
+    const generation = ++dropSourcesGenerationRef.current;
+    setDropSourceMobs([]);
+    void getDropSources(dropSources.itemId)
+      .then((mobs) => {
+        if (dropSourcesGenerationRef.current === generation) setDropSourceMobs(mobs);
+      })
+      .catch(() => undefined);
+  }, [dropSources]);
 
   let content;
   if (loadError) {
@@ -795,6 +841,7 @@ export function QuestPage({
                           item={item}
                           onHover={showTip}
                           onLeave={hideTip}
+                          onClick={openDropSources}
                         />
                       ))}
                     </div>
@@ -810,6 +857,7 @@ export function QuestPage({
                           item={item}
                           onHover={showTip}
                           onLeave={hideTip}
+                          onClick={openDropSources}
                         />
                       ))}
                     </div>
@@ -941,6 +989,19 @@ export function QuestPage({
             document.body,
           )
         : null}
+      {dropSources ? (
+        <DropSourcesDialog
+          item={dropSources}
+          sources={dropSourceMobs}
+          currentMobId={null}
+          thumbCache={mobThumbCacheRef.current}
+          onPick={(mobId) => {
+            setDropSources(null);
+            onOpenMob?.(mobId);
+          }}
+          onClose={() => setDropSources(null)}
+        />
+      ) : null}
     </div>
   );
 }

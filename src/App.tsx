@@ -125,6 +125,8 @@ export default function App() {
   const [avatarPick, setAvatarPick] = useState<string | null>(null);
   // 怪物圖鑑最後選取的圖鑑路徑（footer 麵包屑用）。
   const [mobPick, setMobPick] = useState<string | null>(null);
+  // 任務頁掉落來源彈窗點怪物時的跨頁跳轉請求（nonce 讓同 id 可重複觸發）。
+  const [mobJump, setMobJump] = useState<{ mobId: number; nonce: number } | null>(null);
   // 技能瀏覽器最後選取的技能路徑（footer 麵包屑用）。
   const [skillPick, setSkillPick] = useState<string | null>(null);
   // 任務資料庫最後選取的任務路徑（footer 麵包屑用）。
@@ -141,6 +143,15 @@ export default function App() {
     childrenMapRef.current = next;
     setChildrenMap(next);
   }, []);
+
+  // 切到怪物圖鑑並選取指定怪物（任務頁掉落來源彈窗的跳轉）。
+  const openMobInBook = useCallback((mobId: number) => {
+    setView("monster");
+    setMonsterActivated(true);
+    setMobJump({ mobId, nonce: Date.now() });
+  }, []);
+
+  const clearMobJump = useCallback(() => setMobJump(null), []);
 
   // 紙娃娃 BGM：view 切到 avatar 且未手動暫停時播放（單曲循環），離開或暫停時停下。
   // AudioClip 內容是 Ogg Vorbis；blob URL 與 <audio> 元素只做一次，暫停會保留播放位置。
@@ -707,13 +718,22 @@ export default function App() {
               />
             ) : null}
             {monsterActivated || view === "monster" ? (
-              <MonsterBookPage visible={view === "monster"} onPickMob={setMobPick} />
+              <MonsterBookPage
+                visible={view === "monster"}
+                onPickMob={setMobPick}
+                jumpToMob={mobJump}
+                onJumpToMobHandled={clearMobJump}
+              />
             ) : null}
             {skillActivated || view === "skill" ? (
               <SkillBookPage visible={view === "skill"} onPickSkill={setSkillPick} />
             ) : null}
             {questActivated || view === "quest" ? (
-              <QuestPage visible={view === "quest"} onPickQuest={setQuestPick} />
+              <QuestPage
+                visible={view === "quest"}
+                onPickQuest={setQuestPick}
+                onOpenMob={openMobInBook}
+              />
             ) : null}
           </main>
         </div>

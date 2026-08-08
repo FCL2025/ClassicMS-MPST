@@ -3164,6 +3164,16 @@ button.monster-drop:focus-visible {
   padding: 12px 14px;
 }
 
+/* 掉落來源彈窗的空狀態（例如查無掉落紀錄的任務道具）。 */
+.drop-sources-empty {
+  margin: 0;
+  grid-column: 1 / -1;
+  padding: 18px 0;
+  color: var(--subtle);
+  font-size: 0.72rem;
+  text-align: center;
+}
+
 .drop-source-item {
   display: grid;
   min-width: 0;
@@ -4535,6 +4545,20 @@ button.monster-drop:focus-visible {
   border-radius: var(--radius-md);
   background: var(--panel);
   padding: 3px 8px 3px 3px;
+}
+
+/* 需求道具可點擊（查看掉落來源彈窗）。 */
+.quest-item-chip.is-clickable {
+  cursor: pointer;
+}
+
+.quest-item-chip.is-clickable:hover {
+  border-color: var(--accent);
+}
+
+.quest-item-chip.is-clickable:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .quest-item-icon {

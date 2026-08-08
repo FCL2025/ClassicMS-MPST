@@ -241,8 +241,8 @@ bash scripts/hosted_to_webp.sh out/hosted/v20260804   # PNG → lossless WebP（
 產出：`workers/hosted.js`（/data/* → R2，含 .json→.json.gz 的 Content-Encoding 處理、
 immutable 快取標頭、CORS）、`wrangler.hosted.jsonc`（assets=dist-hosted +
 R2 binding DATA）、`public/sw-hosted.js`（/data/ cache-first，production 才註冊）、
-`scripts/upload_hosted.mjs`（wrangler r2 bulk put 分批上傳，manifest 格式
-`[{key, file}]`，每批 2,000 筆）、`scripts/serve_hosted.mjs` 支援 .json.gz fallback。
+`scripts/upload_hosted.mjs`（上傳資料集到 R2，細節見下方「資料上傳的速率限制」）、
+`scripts/serve_hosted.mjs` 支援 .json.gz fallback。
 vite.config.hosted.ts：build 時資料根預設同源 `/data`（dev 仍是 localhost:8788，
 `VITE_HOSTED_DATA_BASE` 可覆寫）。
 
@@ -254,15 +254,72 @@ vite.config.hosted.ts：build 時資料根預設同源 `/data`（dev 仍是 loca
 
 1. `npx wrangler login`（瀏覽器授權 Cloudflare）
 2. `npx wrangler r2 bucket create msclassic-data`
-3. `npm run upload:hosted-data -- v20260804`（44k 檔、23 批，失敗自動重試一次）
-4. `npm run deploy:hosted`（部署預覽 Worker 到 `msclassic-hosted.<帳號子域>.workers.dev`）
-5. 網域（2026-08-04 已定案）：正式站 `classic.maplepstutorial.com` 直接換成
+3. 建立 R2 API token 並填進 `.env`（見下方「資料上傳的速率限制」；沒填會退回很慢的路徑）
+4. `npm run upload:hosted-data -- v20260804`（約 3 萬檔，中斷可直接重跑續傳）
+5. `npm run deploy:hosted`（部署預覽 Worker 到 `msclassic-hosted.<帳號子域>.workers.dev`）
+6. 網域（2026-08-04 已定案）：正式站 `classic.maplepstutorial.com` 直接換成
    hosted 版——根目錄 `wrangler.jsonc` 改為 hosted 設定（`main: workers/hosted.js`
    + dist-hosted + R2 binding），**Worker 名稱維持 `msclassic-viewer`**，
    既有 GitHub 串接與 custom domain 不用動；Cloudflare Build command 由
    `npm run build:web` 改為 `npm run build:hosted` 後，push 即自動部署正式站。
    舊的本機資料夾版（dist-web）退役，其功能由 hosted 版的來源切換器涵蓋；
    `wrangler.hosted.jsonc` 保留作 workers.dev 預覽環境。
+
+### 資料上傳的速率限制（2026-08-08 最佳化）
+
+`scripts/upload_hosted.mjs` 有兩條上傳路徑，差別是打哪個 API：
+
+| 路徑 | 介面 | 速率上限 | 3 萬檔實測/估計 |
+| --- | --- | --- | --- |
+| S3 相容 API（預設） | `<account>.r2.cloudflarestorage.com` | 帳號層級沒有請求數上限；只有「同一個 key 每秒 1 次寫入」（我們每個 key 只寫一次） | 受限於上傳頻寬 |
+| wrangler `r2 bulk put`（備援） | `api.cloudflare.com/.../r2/buckets/.../objects/...` | **1,200 requests / 5 分鐘 = 4 req/s（全帳號共用）** | **2 小時以上** |
+
+REST 那條就是原本很慢的原因：Cloudflare REST API 全帳號硬上限 1,200 requests /
+5 分鐘，超過之後**接下來 5 分鐘所有 API 呼叫都會被擋**（HTTP 429）。這是固定速率
+限制，不是並發限制，所以調 `--concurrency` 完全沒用。Cloudflare 官方文件也直接寫
+「高吞吐量的物件操作請改用 S3 相容 API 或 Workers API」。
+參考：<https://developers.cloudflare.com/r2/platform/limits/#cloudflare-rest-api>
+
+走 S3 路徑需要 R2 API token（一次性）：Dashboard → R2 → API → Manage API tokens
+→ Create API token，權限 **Object Read & Write**（範圍可只給 `msclassic-data`），
+把 Account ID / Access Key ID / Secret 填進專案根目錄 `.env`（格式見 `.env.example`，
+`.env` 已被 gitignore）。沒設定時腳本會自動退回 REST 路徑，並主動把速率壓在
+4 req/s 以下、429 後冷卻 320 秒，避免整個帳號被鎖。
+
+其他行為：
+
+- 續傳紀錄改成**每個檔案**一筆（`out/hosted/.upload/uploaded-<version>.json`，
+  記 `大小:mtime`），中斷後重跑只補沒傳成功的；`--force` 可忽略。
+- S3 路徑並發自適應：從 16 起跳，遇到 429/5xx 折半並全體冷卻，連續成功再慢慢加回
+  到 `--concurrency`（預設 48）。
+- `--sample N` 在全部待傳檔案裡等距取樣，給正式上傳前的小範圍實測用。
+- 進度列會即時顯示 檔/s、MB/s 與 ETA。
+
+簽章邏輯抽在 `scripts/lib/r2_s3.mjs`（SigV4 + ListObjectsV2），已用 AWS 官方
+PUT Object 參考向量驗證過，沒有拉任何 AWS SDK 依賴。
+
+### 刪除舊版本資料集
+
+`scripts/r2_delete_version.mjs`（`npm run delete:hosted-data -- <version>`）走 S3 的
+DeleteObjects，一次 1,000 個 key，三萬個物件只要 30 個請求。預設是 dry-run，加
+`--yes` 才真的刪。有保護：目標版本若正是 `vite.config.hosted.ts` 現在指向的那個會直接
+拒絕執行（`--force` 可繞過，正常不該用到）。
+
+**不要**用 `wrangler r2 object delete` 一個個刪——那會走 REST API，撞回 4 req/s 的牆。
+
+一個版本約 1 GB，R2 免費額度 10 GB，保留 1～2 個舊版本當退路沒問題。
+
+### 換版本號時要改哪裡（重要）
+
+`__HOSTED_DATA_VERSION__` 是**建置期常數**（`vite.config.hosted.ts` 的預設值，可用
+`VITE_HOSTED_DATA_VERSION` 環境變數覆寫），編進 bundle 成為 `src/hosted/core.ts` 的
+`DATA_ROOT`。`workers/hosted.js` 只把 `/data/<version>/<path>` 原封不動當 R2 key，
+**沒有任何版本判斷、不會自動挑最新的**（版本目錄裡的 `index.json` 是統計檔，不是版本索引）。
+
+所以「上傳新版本」和「網站切到新版本」是兩件獨立的事：只上傳，線上站仍然讀舊的。
+順序必須是 **資料全部上傳完 → 改 `vite.config.hosted.ts` → 重新 build + deploy**，
+這樣切換是原子的，中間不會出現半新半舊的破圖狀態。整套流程見
+`.claude/skills/redeploy-hosted-data/SKILL.md`。
 
 本機驗證已過：gzip 資料集端到端（tooltip、怪物明細、切圖）、serve_hosted 的
 .json→.json.gz fallback（curl --compressed 比對一致）、upload dry-run

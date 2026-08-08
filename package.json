@@ -1,7 +1,7 @@
 {
   "name": "msclassic-viewer",
   "private": true,
-  "version": "0.27.5",
+  "version": "0.28.0",
   "description": "楓之谷經典版 Unity 資料瀏覽、圖片預覽與 JSON/PNG/XML 匯出工具",
   "type": "module",
   "scripts": {
@@ -24,7 +24,8 @@
     "clean:debug": "powershell -ExecutionPolicy Bypass -File scripts/clean-target.ps1 -Mode debug",
     "clean:target": "powershell -ExecutionPolicy Bypass -File scripts/clean-target.ps1 -Mode all",
     "deploy:hosted": "npm run build:hosted && npx wrangler deploy -c wrangler.hosted.jsonc",
-    "upload:hosted-data": "node scripts/upload_hosted.mjs"
+    "upload:hosted-data": "node scripts/upload_hosted.mjs",
+    "delete:hosted-data": "node scripts/r2_delete_version.mjs"
   },
   "dependencies": {
     "@tanstack/react-virtual": "^3.13.0",

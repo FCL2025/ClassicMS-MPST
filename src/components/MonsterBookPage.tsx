@@ -5,7 +5,6 @@ import {
   getItemTooltipById,
   getMobDetail,
   getMobDropIcon,
-  getMonsterBook,
   supportsDataSourceSwitch,
   type ItemTooltip as ItemTooltipData,
   type MobDetail,
@@ -13,6 +12,8 @@ import {
   type MobFrame,
   type MonsterSummary,
 } from "../api";
+import { compareDropSourceMobs, loadMonsterBookOnce } from "../dropSources";
+import { QUEST_ITEM_DROPS, questDropItemIdsForMob } from "../questDrops";
 import { DropSourcesDialog, type DropSourceItem, type MobThumbCache } from "./DropSourcesDialog";
 import { DropItemTooltip, ItemTooltip } from "./ItemTooltip";
 
@@ -250,10 +251,15 @@ function statRows(detail: MobDetail): [string, string][] {
 export function MonsterBookPage({
   visible,
   onPickMob,
+  jumpToMob,
+  onJumpToMobHandled,
 }: {
   visible: boolean;
   /** 選取怪物時回報圖鑑路徑（給 App footer 麵包屑）。 */
   onPickMob?: (path: string) => void;
+  /** 其他頁面要求跳轉到指定怪物（nonce 讓同 id 可重複觸發）。 */
+  jumpToMob?: { mobId: number; nonce: number } | null;
+  onJumpToMobHandled?: () => void;
 }) {
   const [book, setBook] = useState<MonsterSummary[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -267,6 +273,9 @@ export function MonsterBookPage({
     itemIds: Set<number>;
   }>({ mobId: null, itemIds: new Set() });
   const detailGenerationRef = useRef(0);
+
+  // 任務道具補充表的名稱（itemId → 名稱）：不在圖鑑清單內，清單載入後另外補齊。
+  const [questDropNames, setQuestDropNames] = useState<Record<number, string | null> | null>(null);
 
   // 戰利品點擊後的「也掉落此道具的怪物」彈窗；null 表示未開啟。
   const [dropSources, setDropSources] = useState<DropSourceItem | null>(null);
@@ -372,7 +381,7 @@ export function MonsterBookPage({
   // 清單只載入一次（此元件掛載後保持不卸載）。
   useEffect(() => {
     let active = true;
-    getMonsterBook()
+    loadMonsterBookOnce()
       .then((list) => {
         if (!active) return;
         setBook(list);
@@ -381,12 +390,31 @@ export function MonsterBookPage({
       .catch((error: unknown) => {
         if (active) setLoadError(String(error));
       });
+    // 任務道具補充表的名稱不在圖鑑清單裡，從道具字串表補齊（走 tooltip 快取）。
+    void Promise.all(
+      Object.keys(QUEST_ITEM_DROPS).map(async (itemKey) => {
+        const itemId = Number(itemKey);
+        const tip = await loadItemTooltip(itemId);
+        // 字串表缺名時 title 會是原始 id，視同無名稱。
+        const name = tip && tip.title !== String(itemId) ? tip.title : null;
+        return [itemId, name] as const;
+      }),
+    ).then((entries) => {
+      if (active) setQuestDropNames(Object.fromEntries(entries));
+    });
     return () => {
       active = false;
     };
-  }, []);
+  }, [loadItemTooltip]);
 
-  // 搜尋：符合怪物名稱、怪物 id、或任一掉落物名稱。
+  // 其他頁面（如任務頁的掉落來源彈窗）要求跳轉到指定怪物；等清單載入後選取。
+  useEffect(() => {
+    if (!jumpToMob || !book) return;
+    setSelectedId(jumpToMob.mobId);
+    onJumpToMobHandled?.();
+  }, [jumpToMob, book, onJumpToMobHandled]);
+
+  // 搜尋：符合怪物名稱、怪物 id、任一掉落物名稱、或任一任務道具名稱（補充表）。
   const filtered = useMemo(() => {
     if (!book) return [];
     const keyword = query.trim().toLowerCase();
@@ -395,9 +423,12 @@ export function MonsterBookPage({
       (entry) =>
         entry.name?.toLowerCase().includes(keyword) ||
         String(entry.mobId).includes(keyword) ||
-        entry.drops.some((drop) => drop.name?.toLowerCase().includes(keyword)),
+        entry.drops.some((drop) => drop.name?.toLowerCase().includes(keyword)) ||
+        questDropItemIdsForMob(entry.mobId).some((itemId) =>
+          questDropNames?.[itemId]?.toLowerCase().includes(keyword),
+        ),
     );
-  }, [book, query]);
+  }, [book, query, questDropNames]);
 
   const visibleDrops = useMemo(
     () =>
@@ -407,7 +438,8 @@ export function MonsterBookPage({
     [detail, missingDrops],
   );
 
-  // 反向索引：itemId → 掉落它的怪物（清單已內嵌完整 drops，直接前端建表）。
+  // 反向索引：itemId → 掉落它的怪物（清單已內嵌完整 drops，直接前端建表；
+  // 任務道具補充表也併入，點擊任務道具一樣能反查掉落來源）。
   const dropSourcesIndex = useMemo(() => {
     const index = new Map<number, MonsterSummary[]>();
     for (const entry of book ?? []) {
@@ -417,6 +449,22 @@ export function MonsterBookPage({
         else index.set(drop.itemId, [entry]);
       }
     }
+    for (const [itemKey, mobIds] of Object.entries(QUEST_ITEM_DROPS)) {
+      const itemId = Number(itemKey);
+      const list = index.get(itemId) ?? [];
+      for (const mobId of mobIds) {
+        if (list.some((entry) => entry.mobId === mobId)) continue;
+        // 怪物不在圖鑑清單時補一筆最小資料，讓補充表的來源仍可顯示與跳轉。
+        const entry = (book ?? []).find((mob) => mob.mobId === mobId) ?? {
+          mobId,
+          name: null,
+          level: null,
+          drops: [],
+        };
+        list.push(entry);
+      }
+      index.set(itemId, list);
+    }
     return index;
   }, [book]);
 
@@ -424,13 +472,17 @@ export function MonsterBookPage({
   const dropSourceMobs = useMemo(() => {
     if (!dropSources) return [];
     const mobs = dropSourcesIndex.get(dropSources.itemId) ?? [];
-    return [...mobs].sort(
-      (a, b) =>
-        (a.level ?? Number.MAX_SAFE_INTEGER) - (b.level ?? Number.MAX_SAFE_INTEGER) ||
-        (a.name ?? "").localeCompare(b.name ?? "", "zh-Hant") ||
-        a.mobId - b.mobId,
-    );
+    return [...mobs].sort(compareDropSourceMobs);
   }, [dropSources, dropSourcesIndex]);
+
+  // 任務道具掉落（補充表）：圖鑑戰利品之外的獨立區塊，名稱由 questDropNames 補齊。
+  const questDrops = useMemo<MobDropItem[]>(() => {
+    if (!detail) return [];
+    return questDropItemIdsForMob(detail.mobId).map((itemId) => ({
+      itemId,
+      name: questDropNames?.[itemId] ?? null,
+    }));
+  }, [detail, questDropNames]);
 
   const openDropSources = (itemId: number, name: string | null) => {
     hideDropTip();
@@ -602,6 +654,37 @@ export function MonsterBookPage({
                   <p className="monster-section-empty">圖鑑沒有此怪物的掉落紀錄</p>
                 )}
               </section>
+
+              {questDrops.length > 0 ? (
+                <section className="monster-section">
+                  <h3>
+                    任務道具（{questDrops.length}）
+                    <span className="monster-section-hint">點擊道具可查看掉落怪物</span>
+                  </h3>
+                  <div className="monster-drops">
+                    {questDrops.map((drop) => (
+                      <button
+                        key={drop.itemId}
+                        type="button"
+                        className="monster-drop"
+                        title="查看掉落此道具的怪物"
+                        onClick={() => openDropSources(drop.itemId, drop.name)}
+                        onMouseEnter={(event) => showDropTip(drop.itemId, event, drop.name)}
+                        onMouseLeave={hideDropTip}
+                      >
+                        <div className="monster-drop-icon">
+                          <MobDropIcon
+                            drop={drop}
+                            loadIcon={loadDropIcon}
+                            onMissing={hideMissingDrop}
+                          />
+                        </div>
+                        <span className="monster-drop-name">{drop.name ?? drop.itemId}</span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
 
               {detail.maps.length > 0 ? (
                 <section className="monster-section">

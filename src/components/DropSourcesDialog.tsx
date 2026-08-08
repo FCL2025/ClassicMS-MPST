@@ -129,6 +129,9 @@ export function DropSourcesDialog({
           </button>
         </header>
         <div className="drop-sources-grid">
+          {sources.length === 0 ? (
+            <p className="drop-sources-empty">沒有已知的掉落來源</p>
+          ) : null}
           {sources.map((mob) => {
             const current = mob.mobId === currentMobId;
             return (
