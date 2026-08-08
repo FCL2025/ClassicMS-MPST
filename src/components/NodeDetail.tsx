@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import {
+  formatValue,
   getAudio,
   getImage,
   getItemTooltip,
@@ -540,6 +541,8 @@ export function NodeDetail({
 
   const isImageCapable = detail.value.type === "Canvas" || detail.value.type === "Uol";
   const showPreview = Boolean(imgUrl) || isImageCapable;
+  // SubTree 只有子節點、Canvas 由圖片預覽呈現，其餘型別在標題下顯示節點值。
+  const showValue = detail.value.type !== "SubTree" && detail.value.type !== "Canvas";
 
   return (
     <article className="node-detail-panel">
@@ -552,6 +555,13 @@ export function NodeDetail({
           <span className="readonly-badge">唯讀</span>
         </div>
       </header>
+
+      {showValue ? (
+        <div className="detail-heading">
+          <p>節點值</p>
+          <input readOnly value={formatValue(detail.value)} title={formatValue(detail.value)} />
+        </div>
+      ) : null}
 
       <div className={`detail-workspace${showPreview ? " has-preview" : ""}`}>
         {showPreview ? (
