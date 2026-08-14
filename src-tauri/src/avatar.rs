@@ -172,7 +172,7 @@ const ZMAP: &[&str] = &[
 ];
 
 /// 幀 delay 的預設值（毫秒）。
-const DEFAULT_DELAY: i32 = 100;
+pub(crate) const DEFAULT_DELAY: i32 = 100;
 /// UOL / action+frame 連鎖解析的上限（防循環）。
 const RESOLVE_LIMIT: usize = 8;
 
@@ -666,7 +666,7 @@ fn img_key_of(slot: &str, id: &str) -> Option<String> {
 
 /// 在 img 樹上找動作節點；找不到時往數字名子節點裡找
 /// （cash 武器在 img 下多一層武器類型節點）。
-fn find_action(root: &WzNode, chain: &[&str]) -> Option<String> {
+pub(crate) fn find_action(root: &WzNode, chain: &[&str]) -> Option<String> {
     find_action_at(root, "", chain).or_else(|| {
         root.children
             .iter()
@@ -675,7 +675,7 @@ fn find_action(root: &WzNode, chain: &[&str]) -> Option<String> {
     })
 }
 
-fn find_action_at(base: &WzNode, base_rel: &str, chain: &[&str]) -> Option<String> {
+pub(crate) fn find_action_at(base: &WzNode, base_rel: &str, chain: &[&str]) -> Option<String> {
     let rel = |name: &str| {
         if base_rel.is_empty() {
             name.to_string()
@@ -701,7 +701,7 @@ fn find_action_at(base: &WzNode, base_rel: &str, chain: &[&str]) -> Option<Strin
 
 /// 動作節點的幀列表（數字名子節點，依數值排序）；
 /// 動作節點直接含 canvas 時（hair/face 的 default、head 的 front）視為單幀。
-fn frame_list(root: &WzNode, action_rel: &str) -> Vec<String> {
+pub(crate) fn frame_list(root: &WzNode, action_rel: &str) -> Vec<String> {
     let Some(action_node) = root.find(action_rel) else {
         return Vec::new();
     };
@@ -725,7 +725,7 @@ fn frame_list(root: &WzNode, action_rel: &str) -> Vec<String> {
 
 /// 解析幀節點：跟隨 UOL，以及 action+frame 屬性的跨動作引用。
 /// 回傳解析後的相對路徑。
-fn resolve_frame(root: &WzNode, rel: &str) -> Option<String> {
+pub(crate) fn resolve_frame(root: &WzNode, rel: &str) -> Option<String> {
     let mut path = rel.to_string();
     for _ in 0..RESOLVE_LIMIT {
         let (node, resolved) = resolve_node(root, &path)?;
@@ -1102,7 +1102,7 @@ fn head_id_of(body_id: &str) -> String {
 }
 
 /// 名稱表查詢：key 是去前導零的 id；查無用 id 本身。
-fn item_name(names: &crate::item_tooltip::ItemNameTable, id: &str) -> String {
+pub(crate) fn item_name(names: &crate::item_tooltip::ItemNameTable, id: &str) -> String {
     id.parse::<u32>()
         .ok()
         .and_then(|n| names.get(&n))
@@ -1111,7 +1111,7 @@ fn item_name(names: &crate::item_tooltip::ItemNameTable, id: &str) -> String {
 }
 
 /// 幀索引循環：部位幀數與主幀數不一致時 modulo。
-fn wrap_index(i: usize, len: usize) -> usize {
+pub(crate) fn wrap_index(i: usize, len: usize) -> usize {
     i % len
 }
 
@@ -1120,13 +1120,13 @@ fn is_digits(name: &str) -> bool {
 }
 
 /// 節點是否像個動作：含數字名子節點（幀）或 canvas/UOL。
-fn looks_like_action(node: &WzNode) -> bool {
+pub(crate) fn looks_like_action(node: &WzNode) -> bool {
     node.children
         .iter()
         .any(|c| is_digits(&c.name) || matches!(c.value, Value::Canvas | Value::Uol(_)))
 }
 
-fn frame_delay(node: &WzNode) -> i32 {
+pub(crate) fn frame_delay(node: &WzNode) -> i32 {
     node.find("delay")
         .and_then(|n| value_as_i32(&n.value))
         .unwrap_or(DEFAULT_DELAY)
@@ -1139,7 +1139,7 @@ fn frame_face_visible(node: &WzNode) -> bool {
 
 /// 該 img 是否點裝：`info/cash` 數值非零（Int/U8/U16 皆可能；
 /// 節點不存在或非數值 → false）。
-fn is_cash(tree: &WzNode) -> bool {
+pub(crate) fn is_cash(tree: &WzNode) -> bool {
     let Some(info) = tree.find("info") else {
         return false;
     };
@@ -1158,7 +1158,7 @@ fn z_str(node: &WzNode) -> Option<&str> {
     }
 }
 
-fn vector_prop(node: &WzNode, name: &str) -> Option<(f32, f32)> {
+pub(crate) fn vector_prop(node: &WzNode, name: &str) -> Option<(f32, f32)> {
     match node.find(name).map(|n| &n.value) {
         Some(Value::Vector(x, y)) => Some((*x, *y)),
         _ => None,

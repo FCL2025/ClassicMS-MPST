@@ -13,6 +13,7 @@ pub mod gui;
 pub mod image;
 pub mod item_tooltip;
 pub mod monster;
+pub mod pet;
 pub mod quest;
 pub mod search;
 pub mod skill;

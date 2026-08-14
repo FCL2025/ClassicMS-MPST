@@ -2728,6 +2728,69 @@ textarea:focus-visible,
   font-size: 0.72rem;
 }
 
+/* ── 寵物紙娃娃 ─────────────────────────────────────────────── */
+
+/* 寵物紙娃娃模式：同紙娃娃，沒有樹狀區與拖曳條，右半整塊給 PetAvatarPage。 */
+.app-body.is-pet {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app-body.is-pet .app-right {
+  overflow: hidden;
+  padding: 0;
+}
+
+/* 左 20% / 右 80%（比照 .avatar-page）。 */
+.pet-page {
+  display: grid;
+  height: 100%;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 4fr);
+}
+
+/* display:grid 會蓋掉 hidden 屬性的預設 display:none，補回來。 */
+.pet-page[hidden] {
+  display: none;
+}
+
+.pet-page-status {
+  grid-column: 1 / -1;
+  align-self: center;
+  justify-self: center;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.pet-left {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  border-right: 1px solid var(--border-strong);
+  background: var(--surface-raised);
+}
+
+/* 上：正方形預覽（寬 = 欄寬）。 */
+.pet-left-preview {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-bottom: 1px solid var(--border);
+}
+
+/* 下：控制區（可捲動）。 */
+.pet-left-controls {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* 右側商店：tab + grid + 分頁（class 沿用 .avatar-shop*，不再複製樣式）。 */
+.pet-right {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+}
+
 /* ── 怪物圖鑑 ─────────────────────────────────────────────── */
 
 /* 怪物圖鑑模式：同紙娃娃，沒有樹狀區，右半整塊給 MonsterBookPage。 */

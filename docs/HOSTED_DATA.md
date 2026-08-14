@@ -200,13 +200,14 @@ bash scripts/hosted_to_webp.sh out/hosted/v20260804   # PNG → lossless WebP（
 **單物件明細**由前端按需從 tree/strings 推導。
 
 - pipeline（hosted_export 新增 features 階段，`--skip-features` 可跳過）：
-  `features/` 六檔——monster_book.json（343 隻，含 drops）、skill_book.json
+  `features/` 九檔——monster_book.json（343 隻，含 drops）、skill_book.json
   （82 個 job 分組，category 已分類）、commodity.json（692 件，含 iconBase64）、
   avatar_equipment.json（7,615 件）、avatar_meta.json（254 動作 + 8 膚色）、
-  action_delays.json（254 個動作總延遲，供技能詳情）。全部直接呼叫 Rust 既有的
-  pub 聚合函式產生，與桌面版同源。
+  pet_list.json（寵物清單，含動作清單）、pet_equip_list.json（寵物裝備清單，
+  含支援寵物 id）、action_delays.json（254 個動作總延遲，供技能詳情）。
+  全部直接呼叫 Rust 既有的 pub 聚合函式產生，與桌面版同源。
 - 前端：`src/hosted/core.ts`（從 api.hosted.ts 抽出的共用機制：tree/strings 快取、
-  sheet 切圖、UOL 解析）+ 四個功能模組：
+  sheet 切圖、UOL 解析）+ 五個功能模組：
   - `tooltip.ts`：物品 tooltip（by path / by id），by-id 支援全部類別
     （移植 commodity.rs 的 item_path_candidates 映射；比 Rust 版只查 Character 更廣）
   - `monster.ts`：圖鑑清單（features）+ 怪物明細（stats/frames 切圖/drops+icon/
@@ -214,8 +215,10 @@ bash scripts/hosted_to_webp.sh out/hosted/v20260804   # PNG → lossless WebP（
   - `skill.ts`：技能清單（features）+ 技能詳情（levels/actions/actionDelays）
   - `avatar.ts`：紙娃娃合成完整移植（ZMAP 149 層、錨點對齊、hairCover/hairShade、
     face 獨立幀），**與 Rust avatar_smoke 同參數對照逐行一致**
+  - `pet.ts`：寵物紙娃娃（清單走 features；幀合成 = 原點對齊，本體 +
+    寵裝兩層，寵裝幀 index modulo 對齊本體）
 - api.hosted.ts 的 stub 已全部換成模組 re-export；`initialView` 新增
-  `?view=tree|avatar|monster|skill` 深連結（也方便無頭瀏覽器測試）。
+  `?view=tree|avatar|pet|monster|skill` 深連結（也方便無頭瀏覽器測試）。
 - 瀏覽器實測（Edge headless + CDP）：怪物圖鑑明細（嫩寶 stats/10 掉落物含 icon/
   35 張出沒地圖）、技能頁（精靈的祝福，等級滑桿數值正確）、紙娃娃（裝備格 + 預覽
   渲染）、物品 tooltip（藍色毛帽）全部正確。

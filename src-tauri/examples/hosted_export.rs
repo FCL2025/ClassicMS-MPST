@@ -611,6 +611,14 @@ fn export_features(
         let meta = msclassic::avatar::avatar_meta(svc)?;
         Ok((serde_json::to_vec(&meta)?, meta.actions.len()))
     });
+    feature_step(&features_dir, "pet_list.json", stats, || {
+        let pets = msclassic::pet::pet_list(svc)?;
+        Ok((serde_json::to_vec(&pets)?, pets.len()))
+    });
+    feature_step(&features_dir, "pet_equip_list.json", stats, || {
+        let items = msclassic::pet::pet_equip_list(svc)?;
+        Ok((serde_json::to_vec(&items)?, items.len()))
+    });
     feature_step(&features_dir, "action_delays.json", stats, || {
         // 語意照抄 skill.rs 的 action_delays：`Character/00002000` 根的非 info
         // 子節點各為一個動作，其幀子節點的 `delay` 取絕對值加總；幀缺 delay

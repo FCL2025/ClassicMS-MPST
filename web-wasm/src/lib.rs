@@ -255,6 +255,34 @@ pub fn get_avatar_frames(
     .and_then(|v| to_js(&v))
 }
 
+/// 寵物清單：回 `PetInfo[]`（camelCase），語意對齊 gui.rs 的 get_pet_list。
+#[wasm_bindgen]
+pub fn get_pet_list() -> Result<JsValue, JsValue> {
+    with_service(|s| msclassic::pet::pet_list(s).map_err(|e| e.to_string())).and_then(|v| to_js(&v))
+}
+
+/// 寵物裝備清單：回 `PetEquipInfo[]`（camelCase），語意對齊 gui.rs 的 get_pet_equip_list。
+#[wasm_bindgen]
+pub fn get_pet_equip_list() -> Result<JsValue, JsValue> {
+    with_service(|s| msclassic::pet::pet_equip_list(s).map_err(|e| e.to_string()))
+        .and_then(|v| to_js(&v))
+}
+
+/// 合成寵物幀圖層：`equip_id` 傳 null 表示不穿寵裝，
+/// 回 `AvatarFrames`（camelCase），語意對齊 gui.rs 的 get_pet_frames。
+#[wasm_bindgen]
+pub fn get_pet_frames(
+    pet_id: &str,
+    equip_id: Option<String>,
+    action: &str,
+) -> Result<JsValue, JsValue> {
+    with_service(|s| {
+        msclassic::pet::pet_frames(s, pet_id, equip_id.as_deref(), action)
+            .map_err(|e| e.to_string())
+    })
+    .and_then(|v| to_js(&v))
+}
+
 /// JS 傳入的 parts 陣列 → `Vec<PartInput>`（camelCase 鍵）。
 fn parse_parts(parts: &JsValue) -> Result<Vec<msclassic::avatar::PartInput>, JsValue> {
     let json = js_sys::JSON::stringify(parts)

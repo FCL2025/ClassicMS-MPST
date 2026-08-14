@@ -16,6 +16,7 @@ use crate::commodity::CommodityItem;
 use crate::export::{ExportStats, FileExportResult};
 use crate::item_tooltip::ItemTooltip;
 use crate::monster::{MobDetail, MonsterSummary};
+use crate::pet::{self, PetEquipInfo, PetInfo};
 use crate::quest::{QuestDetail, QuestSummary};
 use crate::skill::{SkillDetail, SkillJobGroup};
 
@@ -361,6 +362,45 @@ async fn get_avatar_frames(
     .await
 }
 
+/// 寵物清單（Item/Pet）：名稱、icon 路徑與動作清單由後端聚合，一次拿完。
+#[tauri::command]
+async fn get_pet_list(state: State<'_, AppState>) -> Result<Vec<PetInfo>, String> {
+    let state = state.inner().clone();
+    blocking(move || {
+        let (service, _) = state.current_or_open(None)?;
+        pet::pet_list(&service).map_err(|error| error.to_string())
+    })
+    .await
+}
+
+/// 寵物裝備清單（Character/PetEquip）：名稱、icon 路徑與支援寵物 id。
+#[tauri::command]
+async fn get_pet_equip_list(state: State<'_, AppState>) -> Result<Vec<PetEquipInfo>, String> {
+    let state = state.inner().clone();
+    blocking(move || {
+        let (service, _) = state.current_or_open(None)?;
+        pet::pet_equip_list(&service).map_err(|error| error.to_string())
+    })
+    .await
+}
+
+/// 合成寵物一個動作的幀圖層（寵物幀 + 寵裝幀，`equip_id` 為 None 表示不穿寵裝）。
+#[tauri::command]
+async fn get_pet_frames(
+    pet_id: String,
+    equip_id: Option<String>,
+    action: String,
+    state: State<'_, AppState>,
+) -> Result<AvatarFrames, String> {
+    let state = state.inner().clone();
+    blocking(move || {
+        let (service, _) = state.current_or_open(None)?;
+        pet::pet_frames(&service, &pet_id, equip_id.as_deref(), &action)
+            .map_err(|error| error.to_string())
+    })
+    .await
+}
+
 /// 怪物圖鑑清單（MonsterBook）：名稱、等級與掉落物 id/名稱由後端聚合，一次拿完。
 #[tauri::command]
 async fn get_monster_book(state: State<'_, AppState>) -> Result<Vec<MonsterSummary>, String> {
@@ -557,6 +597,9 @@ pub fn run() {
             get_avatar_emotions,
             get_avatar_equipment,
             get_avatar_frames,
+            get_pet_list,
+            get_pet_equip_list,
+            get_pet_frames,
             get_monster_book,
             get_mob_detail,
             get_skill_book,

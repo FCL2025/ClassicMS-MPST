@@ -345,6 +345,16 @@ async function dispatch(method: string, args: unknown[]): Promise<unknown> {
         args[3] as boolean,
         args[4] as boolean,
       );
+    case "getPetList":
+      return wasm.get_pet_list();
+    case "getPetEquipList":
+      return wasm.get_pet_equip_list();
+    case "getPetFrames":
+      return wasm.get_pet_frames(
+        args[0] as string,
+        (args[1] as string | null | undefined) ?? null,
+        args[2] as string,
+      );
     case "searchNodes":
       return wasm.search_nodes(
         args[0] as string,

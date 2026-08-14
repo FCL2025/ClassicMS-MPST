@@ -77,6 +77,8 @@ export type {
   OpenInfo,
   OpenResult,
   PartInput,
+  PetEquipInfo,
+  PetInfo,
   QuestDetail,
   QuestDialogueStage,
   QuestItemRef,
@@ -112,6 +114,8 @@ import type {
   NodeDetail,
   OpenResult,
   PartInput,
+  PetEquipInfo,
+  PetInfo,
   QuestDetail,
   QuestSummary,
   SearchHit,
@@ -224,6 +228,16 @@ export const getAvatarFrames = (
 ): Promise<AvatarFrames> =>
   backend().getAvatarFrames(parts, action, emotion, hairCover, hairShade);
 
+export const getPetList = (): Promise<PetInfo[]> => backend().getPetList();
+
+export const getPetEquipList = (): Promise<PetEquipInfo[]> => backend().getPetEquipList();
+
+export const getPetFrames = (
+  petId: string,
+  equipId: string | null,
+  action: string,
+): Promise<AvatarFrames> => backend().getPetFrames(petId, equipId, action);
+
 // ---------------------------------------------------------------------------
 // export 契約：匯出（依來源委派；雲端模式會 reject「尚未支援匯出」）
 // ---------------------------------------------------------------------------
@@ -258,12 +272,13 @@ export const initialDataDir = (): Promise<string | null> => backend().initialDat
 
 export const initialPath = (): Promise<string | null> => Promise.resolve(null);
 
-/** 支援 `?view=tree|avatar|monster|skill|quest` 深連結（兩種來源通用）。 */
+/** 支援 `?view=tree|avatar|pet|monster|skill|quest` 深連結（兩種來源通用）。 */
 export const initialView = (): Promise<string | null> => {
   const view = new URLSearchParams(window.location.search).get("view");
   return Promise.resolve(
     view === "tree" ||
       view === "avatar" ||
+      view === "pet" ||
       view === "monster" ||
       view === "skill" ||
       view === "quest"

@@ -349,6 +349,23 @@ export interface AvatarFrames {
   effectFrames: AvatarFrame[];
 }
 
+/** 寵物項目（對齊 pet.rs 的 serde 輸出）。 */
+export interface PetInfo {
+  id: string;
+  name: string;
+  iconPath: string;
+  actions: string[];
+}
+
+/** 寵物裝備項目（對齊 pet.rs 的 serde 輸出）。 */
+export interface PetEquipInfo {
+  id: string;
+  name: string;
+  iconPath: string;
+  petIds: number[];
+  cash: boolean;
+}
+
 // pickDataDirectory 與 openDataDir 之間的暫存:File 物件無法走字串路徑往返,
 // 所以選完資料夾先存在這裡,openDataDir 時餵給 Worker。
 let pendingPick: PickedFolder | null = null;
@@ -478,6 +495,13 @@ export const getAvatarFrames = (
   hairCover: boolean,
   hairShade: boolean,
 ) => rpc<AvatarFrames>("getAvatarFrames", parts, action, emotion, hairCover, hairShade);
+
+export const getPetList = () => rpc<PetInfo[]>("getPetList");
+
+export const getPetEquipList = () => rpc<PetEquipInfo[]>("getPetEquipList");
+
+export const getPetFrames = (petId: string, equipId: string | null, action: string) =>
+  rpc<AvatarFrames>("getPetFrames", petId, equipId, action);
 
 interface WasmFileExport {
   filename: string;

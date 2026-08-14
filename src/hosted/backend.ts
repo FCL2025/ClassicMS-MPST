@@ -336,6 +336,29 @@ export interface PartInput {
   visible: boolean;
 }
 
+/** 寵物清單項目（對齊 pet.rs 的 PetInfo serde 輸出）。 */
+export interface PetInfo {
+  /** img 名（7 碼，如 "5000000"）。 */
+  id: string;
+  name: string;
+  /** icon 節點路徑（前端取圖失敗時自行 fallback iconRaw）。 */
+  iconPath: string;
+  /** 該寵物支援的動作清單（含表情類動作，分類由前端處理）。 */
+  actions: string[];
+}
+
+/** 寵物裝備清單項目（對齊 pet.rs 的 PetEquipInfo serde 輸出）。 */
+export interface PetEquipInfo {
+  /** img 名（8 碼，如 "01802000"）。 */
+  id: string;
+  name: string;
+  iconPath: string;
+  /** 支援的寵物 id（img 內的數位子節點）。 */
+  petIds: number[];
+  /** 點裝：img 的 `info/cash` 數值非零。 */
+  cash: boolean;
+}
+
 /** 紙娃娃幀內的一個圖層（path 用 getImage 取圖，x/y 為 canvas 左上角）。 */
 export interface AvatarLayer {
   path: string;
@@ -542,6 +565,8 @@ export {
   getAvatarEquipment,
   getAvatarFrames,
 } from "./avatar";
+
+export { getPetList, getPetEquipList, getPetFrames } from "./pet";
 
 // ---------------------------------------------------------------------------
 // export 契約：匯出（hosted 模式不支援；ExportMenu 會用 toast 顯示錯誤）

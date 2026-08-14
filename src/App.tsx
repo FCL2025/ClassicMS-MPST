@@ -30,6 +30,7 @@ import {
   type OpenResult,
 } from "./api";
 import { AvatarPage } from "./components/AvatarPage";
+import { PetAvatarPage } from "./components/PetAvatarPage";
 import { ExportMenu } from "./components/ExportMenu";
 import { ChangelogDialog } from "./components/ChangelogDialog";
 import { MonsterBookPage } from "./components/MonsterBookPage";
@@ -105,10 +106,14 @@ export default function App() {
   const [treeWidth, setTreeWidth] = useState(initialTreeWidth);
   const [resizingTree, setResizingTree] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
-  // 頂部 view 切換：瀏覽（資產樹）/ 紙娃娃（角色試穿）/ 怪物圖鑑 / 技能 / 任務。
-  const [view, setView] = useState<"tree" | "avatar" | "monster" | "skill" | "quest">("tree");
+  // 頂部 view 切換：瀏覽（資產樹）/ 紙娃娃（角色試穿）/ 寵物（寵物試穿）/ 怪物圖鑑 / 技能 / 任務。
+  const [view, setView] = useState<"tree" | "avatar" | "pet" | "monster" | "skill" | "quest">(
+    "tree",
+  );
   // 紙娃娃第一次切過去才掛載（meta/equipment 此時才載入），之後保持掛載不重置狀態。
   const [avatarActivated, setAvatarActivated] = useState(false);
+  // 寵物紙娃娃同樣 lazy-mount（第一次切過去才載入寵物/寵裝清單）。
+  const [petAvatarActivated, setPetAvatarActivated] = useState(false);
   // 怪物圖鑑同樣 lazy-mount（第一次切過去才載入圖鑑清單）。
   const [monsterActivated, setMonsterActivated] = useState(false);
   // 技能瀏覽器同樣 lazy-mount（第一次切過去才載入技能書）。
@@ -124,7 +129,7 @@ export default function App() {
   const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
   const bgmUrlRef = useRef<string | null>(null);
   const bgmVolumeRef = useRef(bgmVolume);
-  // 紙娃娃最後點選的裝備 img 路徑（footer 麵包屑用）。
+  // 紙娃娃/寵物頁最後點選的裝備 img 路徑（footer 麵包屑用）。
   const [avatarPick, setAvatarPick] = useState<string | null>(null);
   // 怪物圖鑑最後選取的圖鑑路徑（footer 麵包屑用）。
   const [mobPick, setMobPick] = useState<string | null>(null);
@@ -366,12 +371,15 @@ export default function App() {
     storedFolderLabel()
       .then((label) => setReconnectLabel(label))
       .catch(() => undefined);
-    // 自動化測試用：MSCLASSIC_INITIAL_VIEW 可指定啟動 view（tree/avatar/monster/skill/quest）。
+    // 自動化測試用：MSCLASSIC_INITIAL_VIEW 可指定啟動 view（tree/avatar/pet/monster/skill/quest）。
     initialView()
       .then((target) => {
         if (target === "avatar") {
           setView("avatar");
           setAvatarActivated(true);
+        } else if (target === "pet") {
+          setView("pet");
+          setPetAvatarActivated(true);
         } else if (target === "monster") {
           setView("monster");
           setMonsterActivated(true);
@@ -492,6 +500,20 @@ export default function App() {
             }}
           >
             紙娃娃
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "pet"}
+            className={view === "pet" ? "is-active" : ""}
+            disabled={!openInfo}
+            title={openInfo ? "寵物試穿" : "請先選擇資料夾"}
+            onClick={() => {
+              setView("pet");
+              setPetAvatarActivated(true);
+            }}
+          >
+            寵物
           </button>
           <button
             type="button"
@@ -684,7 +706,7 @@ export default function App() {
 
       {openInfo ? (
         <div
-          className={`app-body${view === "avatar" ? " is-avatar" : ""}${view === "monster" ? " is-monster" : ""}${view === "skill" ? " is-skill" : ""}${view === "quest" ? " is-quest" : ""}`}
+          className={`app-body${view === "avatar" ? " is-avatar" : ""}${view === "pet" ? " is-pet" : ""}${view === "monster" ? " is-monster" : ""}${view === "skill" ? " is-skill" : ""}${view === "quest" ? " is-quest" : ""}`}
           style={workspaceStyle}
         >
           {view === "tree" ? (
@@ -737,6 +759,9 @@ export default function App() {
                 cashOnly={cashOnly}
                 onPickItem={setAvatarPick}
               />
+            ) : null}
+            {petAvatarActivated || view === "pet" ? (
+              <PetAvatarPage visible={view === "pet"} onPickItem={setAvatarPick} />
             ) : null}
             {monsterActivated || view === "monster" ? (
               <MonsterBookPage
@@ -835,7 +860,7 @@ export default function App() {
       <footer
         className="app-footer"
         title={
-          view === "avatar"
+          view === "avatar" || view === "pet"
             ? (avatarPick ?? undefined)
             : view === "monster"
               ? (mobPick ?? undefined)
@@ -846,7 +871,7 @@ export default function App() {
                   : (selected?.path ?? undefined)
         }
       >
-        {view === "avatar" ? (
+        {view === "avatar" || view === "pet" ? (
           <>
             <span className="footer-node-type">{avatarPick ? "類型：img" : ""}</span>
             <span className="footer-node-path">{avatarPick ?? ""}</span>

@@ -320,6 +320,23 @@ export interface AvatarFrames {
   effectFrames: AvatarFrame[];
 }
 
+/** 寵物項目（對齊 pet.rs 的 serde 輸出）。 */
+export interface PetInfo {
+  id: string;
+  name: string;
+  iconPath: string;
+  actions: string[];
+}
+
+/** 寵物裝備項目（對齊 pet.rs 的 serde 輸出）。 */
+export interface PetEquipInfo {
+  id: string;
+  name: string;
+  iconPath: string;
+  petIds: number[];
+  cash: boolean;
+}
+
 export type ExportFormat = "json" | "png" | "xml";
 
 export interface FileExportResult {
@@ -359,6 +376,10 @@ export const getAvatarFrames = (
   hairCover: boolean,
   hairShade: boolean,
 ) => invoke<AvatarFrames>("get_avatar_frames", { parts, action, emotion, hairCover, hairShade });
+export const getPetList = () => invoke<PetInfo[]>("get_pet_list");
+export const getPetEquipList = () => invoke<PetEquipInfo[]>("get_pet_equip_list");
+export const getPetFrames = (petId: string, equipId: string | null, action: string) =>
+  invoke<AvatarFrames>("get_pet_frames", { petId, equipId, action });
 export interface SearchHit {
   path: string;
   name: string | null;
