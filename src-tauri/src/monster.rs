@@ -440,7 +440,7 @@ fn parse_book_text(raw: &str) -> BookText {
 }
 
 /// 解析 `String/TW/Map`（`{id: {streetName, mapName}}`）成 id →「地區 : 地圖名」。
-fn load_map_names(service: &DataService) -> HashMap<u32, String> {
+pub(crate) fn load_map_names(service: &DataService) -> HashMap<u32, String> {
     let mut table = HashMap::new();
     let Ok(node) = service.get_node("String/TW/Map") else {
         return table;

@@ -17,6 +17,7 @@ pub mod pet;
 pub mod quest;
 pub mod search;
 pub mod skill;
+pub mod sound;
 pub mod unity;
 #[cfg(target_arch = "wasm32")]
 pub mod wasm_shims;

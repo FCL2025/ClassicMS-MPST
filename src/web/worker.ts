@@ -323,6 +323,8 @@ async function dispatch(method: string, args: unknown[]): Promise<unknown> {
       return wasm.get_monster_book();
     case "getMobDetail":
       return wasm.get_mob_detail(args[0] as number);
+    case "getMapBgmIndex":
+      return wasm.get_map_bgm_index();
     case "getSkillBook":
       return wasm.get_skill_book();
     case "getSkillDetail":

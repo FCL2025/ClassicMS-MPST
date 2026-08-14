@@ -599,6 +599,10 @@ fn export_features(
         let book = svc.get_quest_book()?;
         Ok((serde_json::to_vec(&*book)?, book.len()))
     });
+    feature_step(&features_dir, "map_bgm.json", stats, || {
+        let index = svc.get_map_bgm_index()?;
+        Ok((serde_json::to_vec(&*index)?, index.len()))
+    });
     feature_step(&features_dir, "commodity.json", stats, || {
         let items = svc.get_commodity_items()?;
         Ok((serde_json::to_vec(&items)?, items.len()))

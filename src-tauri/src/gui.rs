@@ -489,6 +489,22 @@ async fn get_quest_detail(
     .await
 }
 
+/// BGM → 地圖反查索引（音樂播放器頁）：每首 BGM 對應使用它的地圖清單。
+#[tauri::command]
+async fn get_map_bgm_index(
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::sound::BgmMapGroup>, String> {
+    let state = state.inner().clone();
+    blocking(move || {
+        let (service, _) = state.current_or_open(None)?;
+        service
+            .get_map_bgm_index()
+            .map(|index| (*index).clone())
+            .map_err(|error| error.to_string())
+    })
+    .await
+}
+
 #[tauri::command]
 async fn search_nodes(
     query: String,
@@ -606,6 +622,7 @@ pub fn run() {
             get_skill_detail,
             get_quest_book,
             get_quest_detail,
+            get_map_bgm_index,
             search_nodes,
             export_subtree,
             export_file,

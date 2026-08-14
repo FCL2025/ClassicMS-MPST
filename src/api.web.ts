@@ -465,7 +465,24 @@ export const getItemTooltipById = (itemId: number) =>
 
 export const getCommodityItems = () => rpc<CommodityItem[]>("getCommodityItems");
 
+/** 使用某首 BGM 的一張地圖（對齊 sound.rs 的 serde 輸出）。 */
+export interface BgmMapRef {
+  mapId: number;
+  name: string | null;
+  /** 地圖 img 路徑（如 `Map/Map/Map0/000010000`），組 miniMap 縮圖路徑用。 */
+  imgPath: string;
+}
+
+/** 一首 BGM 與使用它的地圖清單（對齊 sound.rs 的 serde 輸出）。 */
+export interface BgmMapGroup {
+  /** BGM 路徑（`Sound/` 前綴之後的部分，如 `Bgm00/FloralLife`）。 */
+  bgm: string;
+  maps: BgmMapRef[];
+}
+
 export const getMonsterBook = () => rpc<MonsterSummary[]>("getMonsterBook");
+
+export const getMapBgmIndex = () => rpc<BgmMapGroup[]>("getMapBgmIndex");
 
 export const getMobDetail = (mobId: number) => rpc<MobDetail>("getMobDetail", mobId);
 

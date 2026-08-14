@@ -365,6 +365,23 @@ export const getSkillDetail = (job: string, skillId: string) =>
 export const getQuestBook = () => invoke<QuestSummary[]>("get_quest_book");
 export const getQuestDetail = (questId: string) =>
   invoke<QuestDetail>("get_quest_detail", { questId });
+
+/** 使用某首 BGM 的一張地圖（對齊 sound.rs 的 serde 輸出）。 */
+export interface BgmMapRef {
+  mapId: number;
+  name: string | null;
+  /** 地圖 img 路徑（如 `Map/Map/Map0/000010000`），組 miniMap 縮圖路徑用。 */
+  imgPath: string;
+}
+
+/** 一首 BGM 與使用它的地圖清單（對齊 sound.rs 的 serde 輸出）。 */
+export interface BgmMapGroup {
+  /** BGM 路徑（`Sound/` 前綴之後的部分，如 `Bgm00/FloralLife`）。 */
+  bgm: string;
+  maps: BgmMapRef[];
+}
+
+export const getMapBgmIndex = () => invoke<BgmMapGroup[]>("get_map_bgm_index");
 export const getAvatarMeta = () => invoke<AvatarMeta>("get_avatar_meta");
 export const getAvatarEmotions = (faceId: string) =>
   invoke<string[]>("get_avatar_emotions", { faceId });

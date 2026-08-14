@@ -200,11 +200,12 @@ bash scripts/hosted_to_webp.sh out/hosted/v20260804   # PNG → lossless WebP（
 **單物件明細**由前端按需從 tree/strings 推導。
 
 - pipeline（hosted_export 新增 features 階段，`--skip-features` 可跳過）：
-  `features/` 九檔——monster_book.json（343 隻，含 drops）、skill_book.json
+  `features/` 十檔——monster_book.json（343 隻，含 drops）、skill_book.json
   （82 個 job 分組，category 已分類）、commodity.json（692 件，含 iconBase64）、
   avatar_equipment.json（7,615 件）、avatar_meta.json（254 動作 + 8 膚色）、
   pet_list.json（寵物清單，含動作清單）、pet_equip_list.json（寵物裝備清單，
-  含支援寵物 id）、action_delays.json（254 個動作總延遲，供技能詳情）。
+  含支援寵物 id）、action_delays.json（254 個動作總延遲，供技能詳情）、
+  quest_book.json、map_bgm.json（BGM → 使用地圖反查索引，音樂頁用）。
   全部直接呼叫 Rust 既有的 pub 聚合函式產生，與桌面版同源。
 - 前端：`src/hosted/core.ts`（從 api.hosted.ts 抽出的共用機制：tree/strings 快取、
   sheet 切圖、UOL 解析）+ 五個功能模組：

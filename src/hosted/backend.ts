@@ -159,6 +159,21 @@ export interface MapRef {
   name: string | null;
 }
 
+/** 使用某首 BGM 的一張地圖（對齊 sound.rs 的 serde 輸出）。 */
+export interface BgmMapRef {
+  mapId: number;
+  name: string | null;
+  /** 地圖 img 路徑（如 `Map/Map/Map0/000010000`），組 miniMap 縮圖路徑用。 */
+  imgPath: string;
+}
+
+/** 一首 BGM 與使用它的地圖清單（對齊 sound.rs 的 serde 輸出）。 */
+export interface BgmMapGroup {
+  /** BGM 路徑（`Sound/` 前綴之後的部分，如 `Bgm00/FloralLife`）。 */
+  bgm: string;
+  maps: BgmMapRef[];
+}
+
 /** 怪物掉落物（含 icon）。 */
 export interface MobDropItem {
   itemId: number;
@@ -558,6 +573,8 @@ export { getCommodityItems, getMonsterBook, getMobDetail, getMobDropIcon } from 
 export { getSkillBook, getSkillDetail } from "./skill";
 
 export { getQuestBook, getQuestDetail } from "./quest";
+
+export { getMapBgmIndex } from "./sound";
 
 export {
   getAvatarMeta,

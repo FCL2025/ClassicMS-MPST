@@ -178,6 +178,17 @@ pub fn get_mob_detail(mob_id: u32) -> Result<JsValue, JsValue> {
     with_service(|s| s.get_mob_detail(mob_id).map_err(|e| e.to_string())).and_then(|v| to_js(&v))
 }
 
+/// BGM → 地圖反查索引：回 `BgmMapGroup[]`（camelCase），語意對齊 gui.rs 的 get_map_bgm_index。
+#[wasm_bindgen]
+pub fn get_map_bgm_index() -> Result<JsValue, JsValue> {
+    with_service(|s| {
+        s.get_map_bgm_index()
+            .map(|index| (*index).clone())
+            .map_err(|e| e.to_string())
+    })
+    .and_then(|v| to_js(&v))
+}
+
 /// 技能瀏覽器清單：回 `SkillJobGroup[]`（camelCase），語意對齊 gui.rs 的 get_skill_book。
 #[wasm_bindgen]
 pub fn get_skill_book() -> Result<JsValue, JsValue> {

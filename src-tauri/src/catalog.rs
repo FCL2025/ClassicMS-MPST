@@ -491,6 +491,7 @@ pub struct DataService {
     pub(crate) quest_book_cache: crate::quest::QuestBookCache,
     pub(crate) quest_data_cache: crate::quest::QuestDataCache,
     pub(crate) quest_name_cache: crate::quest::QuestNameCache,
+    pub(crate) map_bgm_cache: crate::sound::MapBgmCache,
 }
 
 #[derive(Default)]
@@ -592,6 +593,7 @@ impl DataService {
             quest_book_cache: Default::default(),
             quest_data_cache: Default::default(),
             quest_name_cache: Default::default(),
+            map_bgm_cache: Default::default(),
         };
         service.validate_locations()?;
         Ok((service, info))
@@ -637,6 +639,7 @@ impl DataService {
             quest_book_cache: Default::default(),
             quest_data_cache: Default::default(),
             quest_name_cache: Default::default(),
+            map_bgm_cache: Default::default(),
         };
         service.validate_locations()?;
         Ok((service, info))

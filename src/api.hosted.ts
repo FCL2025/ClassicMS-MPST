@@ -57,6 +57,8 @@ export type {
   AvatarFrames,
   AvatarLayer,
   AvatarMeta,
+  BgmMapGroup,
+  BgmMapRef,
   ChildEntry,
   CommodityItem,
   DropRef,
@@ -99,6 +101,7 @@ import type {
   AudioResult,
   AvatarFrames,
   AvatarMeta,
+  BgmMapGroup,
   ChildEntry,
   CommodityItem,
   EquipItem,
@@ -208,9 +211,10 @@ export const getSkillDetail = (job: string, skillId: string): Promise<SkillDetai
   backend().getSkillDetail(job, skillId);
 
 export const getQuestBook = (): Promise<QuestSummary[]> => backend().getQuestBook();
-
 export const getQuestDetail = (questId: string): Promise<QuestDetail> =>
   backend().getQuestDetail(questId);
+
+export const getMapBgmIndex = (): Promise<BgmMapGroup[]> => backend().getMapBgmIndex();
 
 export const getAvatarMeta = (): Promise<AvatarMeta> => backend().getAvatarMeta();
 
@@ -272,7 +276,7 @@ export const initialDataDir = (): Promise<string | null> => backend().initialDat
 
 export const initialPath = (): Promise<string | null> => Promise.resolve(null);
 
-/** 支援 `?view=tree|avatar|pet|monster|skill|quest` 深連結（兩種來源通用）。 */
+/** 支援 `?view=tree|avatar|pet|monster|skill|quest|sound` 深連結（兩種來源通用）。 */
 export const initialView = (): Promise<string | null> => {
   const view = new URLSearchParams(window.location.search).get("view");
   return Promise.resolve(
@@ -281,7 +285,8 @@ export const initialView = (): Promise<string | null> => {
       view === "pet" ||
       view === "monster" ||
       view === "skill" ||
-      view === "quest"
+      view === "quest" ||
+      view === "sound"
       ? view
       : null,
   );

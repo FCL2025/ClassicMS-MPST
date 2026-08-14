@@ -27,3 +27,10 @@
 
 - `cargo fmt --all -- --check && cargo clippy -p msclassic --all-targets -- -D warnings && cargo test -p msclassic --all-targets`
 - `npm run build`（桌面前端）；動到 wasm 或 web 版時加跑 `npm run build:web`
+
+## 測試分工（使用者要求）
+
+- build / type-check / lint / 單元測試等**不動滑鼠鍵盤的自動檢查**照跑沒關係。
+- **UI 操作驗證一律交給使用者手動測**：不要用 PowerShell 腳本、SendKeys、mouse_event
+  等方式操控視窗或搶滑鼠（會把使用者的鼠標拉走）。需要實機操作時，列出測試步驟請
+  使用者執行並回報結果。
