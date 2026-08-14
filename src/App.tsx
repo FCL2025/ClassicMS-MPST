@@ -119,8 +119,11 @@ export default function App() {
   const [cashOnly, setCashOnly] = useState(false);
   // 紙娃娃 BGM：切到紙娃娃 tab 時循環播放 Sound/BgmUI/ShopBgm；false 表示使用者手動暫停。
   const [bgmOn, setBgmOn] = useState(true);
+  // 紙娃娃 BGM 音量（0～1），拉桿即時調整，不需重播音訊。
+  const [bgmVolume, setBgmVolume] = useState(0.5);
   const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
   const bgmUrlRef = useRef<string | null>(null);
+  const bgmVolumeRef = useRef(bgmVolume);
   // 紙娃娃最後點選的裝備 img 路徑（footer 麵包屑用）。
   const [avatarPick, setAvatarPick] = useState<string | null>(null);
   // 怪物圖鑑最後選取的圖鑑路徑（footer 麵包屑用）。
@@ -172,6 +175,7 @@ export default function App() {
         if (!bgmAudioRef.current) {
           const audio = new Audio(bgmUrlRef.current);
           audio.loop = true;
+          audio.volume = bgmVolumeRef.current;
           bgmAudioRef.current = audio;
         }
         await bgmAudioRef.current.play();
@@ -184,6 +188,13 @@ export default function App() {
       cancelled = true;
     };
   }, [view, bgmOn]);
+
+  // 音量拉桿即時套用到已建立的 <audio>；元素尚未建立時只更新 ref，建立時再讀取。
+  useEffect(() => {
+    bgmVolumeRef.current = bgmVolume;
+    const audio = bgmAudioRef.current;
+    if (audio) audio.volume = bgmVolume;
+  }, [bgmVolume]);
 
   const loadDataDirectory = useCallback(async (path: string) => {
     const generation = ++datasetGenerationRef.current;
@@ -545,7 +556,7 @@ export default function App() {
         {view === "avatar" ? (
           <>
             <button
-              className="icon-button"
+              className="icon-button bgm-button"
               type="button"
               onClick={() => setBgmOn((on) => !on)}
               title={bgmOn ? "暫停背景音樂" : "播放背景音樂"}
@@ -553,6 +564,16 @@ export default function App() {
             >
               {bgmOn ? "⏸" : "▶"}
             </button>
+            <input
+              className="bgm-volume"
+              type="range"
+              min={0}
+              max={100}
+              value={Math.round(bgmVolume * 100)}
+              onChange={(event) => setBgmVolume(Number(event.target.value) / 100)}
+              title={`背景音樂音量：${Math.round(bgmVolume * 100)}%`}
+              aria-label="背景音樂音量"
+            />
             <label className="cash-switch" title="只顯示點數裝備">
               <input
                 type="checkbox"

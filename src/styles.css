@@ -105,6 +105,26 @@ textarea:focus-visible,
   background: var(--accent-soft);
 }
 
+/* 紙娃娃 BGM 控制：暫停鈕用實心 accent 配色較顯眼，旁邊附音量拉桿。 */
+.icon-button.bgm-button {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.icon-button.bgm-button:not(:disabled):hover {
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
+  color: var(--on-accent);
+}
+
+.bgm-volume {
+  width: 88px;
+  flex: 0 0 auto;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 .data-folder-button {
   display: inline-flex;
   min-height: 32px;
