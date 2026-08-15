@@ -28,6 +28,13 @@
 - `cargo fmt --all -- --check && cargo clippy -p msclassic --all-targets -- -D warnings && cargo test -p msclassic --all-targets`
 - `npm run build`（桌面前端）；動到 wasm 或 web 版時加跑 `npm run build:web`
 
+## 部署（使用者要求）
+
+- 線上版（hosted）只要 push 到 GitHub 就會自動重新佈署，**不需要**手動跑
+  `npm run deploy:hosted`。
+- hosted 資料集（R2）不在自動佈署範圍內：資料有變動時仍需手動跑
+  `node scripts/upload_hosted.mjs <version>` 上傳。
+
 ## 測試分工（使用者要求）
 
 - build / type-check / lint / 單元測試等**不動滑鼠鍵盤的自動檢查**照跑沒關係。
