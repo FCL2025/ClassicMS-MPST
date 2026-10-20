@@ -15,6 +15,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let dir = PathBuf::from(&args[0]);
     let stem = &args[1];
+    let needle = args.get(2).map(String::as_str);
     let path = dir.join(format!("{stem}.bundle"));
     let bundle = Bundle::open(&path)?;
 
@@ -37,7 +38,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let ab = objects::parse_asset_bundle(&data, &sf)?;
             println!("== m_Container（{} 筆）==", ab.container.len());
             for e in ab.container.iter() {
-                println!("  {} -> pid {}", e.path, e.asset.path_id);
+                if needle.is_none_or(|needle| e.path.contains(needle)) {
+                    println!("  {} -> pid {}", e.path, e.asset.path_id);
+                }
             }
         }
 
@@ -58,13 +61,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // 全部索引 MonoBehaviour 完整 hexdump（最多 3 筆）
         println!("\n== 索引 MonoBehaviour ==");
-        for o in sf.objects_by_class(objects::CLASS_MONO_BEHAVIOUR).take(3) {
+        let mut dumped = 0;
+        for o in sf.objects_by_class(objects::CLASS_MONO_BEHAVIOUR) {
             let data = bundle.read_node_range(
                 ni,
                 sf.data_offset + o.byte_start as u64,
                 o.byte_size as usize,
             )?;
             let mb = objects::parse_mono_behaviour(&data, &sf)?;
+            if let Some(needle) = needle {
+                if !mb.name.contains(needle) {
+                    continue;
+                }
+            } else if dumped >= 3 {
+                break;
+            }
+            dumped += 1;
             let payload = &data[mb.header_len..];
             println!(
                 "--- {:?} (pid {}) payload {} bytes ---",

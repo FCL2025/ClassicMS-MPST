@@ -6,10 +6,12 @@
 //! cargo run --release --example avatar_smoke -- [bundle 目錄]
 //! ```
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
-use msclassic::avatar::{avatar_emotions, avatar_equipment, avatar_frames, avatar_meta, PartInput};
+use msclassic::avatar::{
+    avatar_emotions, avatar_equipment, avatar_frames, avatar_meta, Frame, PartInput,
+};
 use msclassic::catalog::DataService;
 use msclassic::wzjs::Value;
 
@@ -21,6 +23,24 @@ fn body_origin(svc: &DataService, action: &str, i: usize) -> Option<(f32, f32)> 
         Value::Vector(x, y) => Some((x, y)),
         _ => None,
     }
+}
+
+fn verify_images(
+    svc: &DataService,
+    frames: &[&[Frame]],
+) -> Result<usize, Box<dyn std::error::Error>> {
+    let paths: BTreeSet<&str> = frames
+        .iter()
+        .flat_map(|group| group.iter())
+        .flat_map(|frame| frame.layers.iter())
+        .map(|layer| layer.path.as_str())
+        .collect();
+    for path in &paths {
+        if svc.get_image(path)?.is_none() {
+            return Err(format!("紙娃娃圖層沒有圖片: {path}").into());
+        }
+    }
+    Ok(paths.len())
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -190,6 +210,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("    z={:>4} x={:>7.1} y={:>7.1} {}", l.z, l.x, l.y, l.path);
         }
     }
+
+    let checked = verify_images(
+        &svc,
+        &[
+            &stand.frames,
+            &stand.face_frames,
+            &stand.effect_frames,
+            &walk.frames,
+            &walk.face_frames,
+            &walk.effect_frames,
+        ],
+    )?;
+    println!("\n紙娃娃圖層取圖檢查: {checked} 個不同路徑皆可取圖");
 
     Ok(())
 }

@@ -1,8 +1,8 @@
 //! 圖片索引與取圖服務（Phase 4）。
 //!
 //! 建立「邏輯路徑 → 圖片來源」索引，跟 Catalog 一起建/快取：
-//! - **spritesheet_***：container 裡的 `.wzspritesheet`（WZSS 索引物件）+
-//!   `_N.png`（atlas 頁 Texture2D）。WZSS 提供每個 sprite 的 rect。
+//! - **spritesheet_***：container 裡的 `.wzspritesheet`（舊 WZSS）或 `.asset`
+//!   （新版索引物件）+ `_N.png`（atlas 頁 Texture2D）。索引提供每個 sprite 的 rect。
 //! - **spriteset_***：container 裡的 `.asset`（sprite 清單 MonoBehaviour，
 //!   payload = (count, (string, pathID)×n) 或 (count, PPtr×n)）+ Sprite(213)
 //!   物件（name / m_Rect / m_RD.texture）+ Texture2D。
@@ -43,7 +43,9 @@ use crate::unity::objects;
 use crate::unity::serialized_file::SerializedFile;
 use crate::unity::Result;
 
+mod sheet_asset;
 mod wzss;
+pub(crate) use sheet_asset::parse_sheet_asset;
 pub use wzss::{cut_sprite, parse_wzss, AtlasPage, WzssIndex, WzssRect, WzssSprite, WzssUolLink};
 
 /// spritesheet：索引物件 + atlas 頁（依 _0, _1… 排序）。
@@ -52,6 +54,9 @@ pub struct SheetEntry {
     /// container 條目順序不保證 index 早於 atlas，因此建構途中允許尚未看到 index。
     #[serde(default)]
     pub index_loc: Option<EntryLocation>,
+    /// 新版圖集用 .asset 保存路徑與裁切資料；舊版仍使用 WZSS。
+    #[serde(default)]
+    pub index_is_asset: bool,
     /// (page 序號, Texture2D 物件位置)
     pub atlas_pages: Vec<(u32, EntryLocation)>,
 }
@@ -139,18 +144,22 @@ impl ImageIndex {
                 continue;
             }
             let rest = &e.path[SHEET_PREFIX.len()..];
-            if let Some(key) = rest.strip_suffix(".wzspritesheet") {
+            if let Some((key, is_asset)) = rest
+                .strip_suffix(".wzspritesheet")
+                .map(|key| (key, false))
+                .or_else(|| rest.strip_suffix(".asset").map(|key| (key, true)))
+            {
                 let Some(index_loc) = loc_of(e.asset.path_id) else {
                     continue;
                 };
                 let key = key.to_string();
-                self.sheets
-                    .entry(key)
-                    .or_insert_with(|| SheetEntry {
-                        index_loc: None,
-                        atlas_pages: vec![],
-                    })
-                    .index_loc = Some(index_loc);
+                let entry = self.sheets.entry(key).or_insert_with(|| SheetEntry {
+                    index_loc: None,
+                    index_is_asset: false,
+                    atlas_pages: vec![],
+                });
+                entry.index_loc = Some(index_loc);
+                entry.index_is_asset = is_asset;
             } else if let Some(base) = strip_png_suffix(rest) {
                 // "login_2.png" → key "login", page 2
                 let Some((key, page)) = split_page_suffix(base) else {
@@ -164,6 +173,7 @@ impl ImageIndex {
                     .entry(key.to_string())
                     .or_insert_with(|| SheetEntry {
                         index_loc: None,
+                        index_is_asset: false,
                         atlas_pages: vec![],
                     });
                 if !entry.atlas_pages.iter().any(|(p, _)| *p == page) {
@@ -562,6 +572,24 @@ mod tests {
                     path_id: 20,
                 },
             },
+            objects::ContainerEntry {
+                path: format!("{SHEET_PREFIX}Character/00002000_0.png"),
+                preload_index: 0,
+                preload_size: 0,
+                asset: objects::PPtr {
+                    file_id: 0,
+                    path_id: 30,
+                },
+            },
+            objects::ContainerEntry {
+                path: format!("{SHEET_PREFIX}Character/00002000.asset"),
+                preload_index: 0,
+                preload_size: 0,
+                asset: objects::PPtr {
+                    file_id: 0,
+                    path_id: 40,
+                },
+            },
         ];
         let loc_of = |pid: i64| {
             Some(EntryLocation {
@@ -576,7 +604,12 @@ mod tests {
         index.collect_sheet(&container, &loc_of).unwrap();
         let sheet = index.sheets.get("login").unwrap();
         assert_eq!(sheet.index_loc.as_ref().unwrap().abs_offset, 20);
+        assert!(!sheet.index_is_asset);
         assert_eq!(sheet.atlas_pages.len(), 1);
         assert_eq!(sheet.atlas_pages[0].0, 0);
+        let sheet = index.sheets.get("Character/00002000").unwrap();
+        assert_eq!(sheet.index_loc.as_ref().unwrap().abs_offset, 40);
+        assert!(sheet.index_is_asset);
+        assert_eq!(sheet.atlas_pages.len(), 1);
     }
 }

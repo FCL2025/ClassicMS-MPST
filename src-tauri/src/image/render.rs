@@ -5,7 +5,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::catalog::{split_img_prefix, CatalogError, DataService, EntryLocation, Result};
 use crate::unity::{objects, texture, UnityError};
 
-use super::{cut_sprite, parse_wzss, AtlasPage, SetSpriteEntry, SheetEntry, WzssUolLink};
+use super::{
+    cut_sprite, parse_sheet_asset, parse_wzss, AtlasPage, SetSpriteEntry, SheetEntry, WzssUolLink,
+};
 
 impl DataService {
     /// 讀取 EntryLocation 指向的物件 bytes。
@@ -77,7 +79,7 @@ impl DataService {
             if let Some(entry) = self.catalog.image.sheets.get(candidate).cloned() {
                 let per_img = *candidate == img_key;
                 return self
-                    .render_sheet(&entry, &img_key, &inner, per_img)
+                    .render_sheet(&entry, candidate, &img_key, &inner, per_img)
                     .map(Some);
             }
         }
@@ -128,39 +130,57 @@ impl DataService {
     fn render_sheet(
         &self,
         entry: &SheetEntry,
+        sheet_key: &str,
         img_key: &str,
         inner: &str,
         per_img: bool,
     ) -> Result<Vec<u8>> {
         let index_loc = entry.index_loc.as_ref().ok_or_else(|| {
-            CatalogError::Unity(UnityError::Format(
-                "spritesheet 缺少 .wzspritesheet 索引".into(),
-            ))
+            CatalogError::Unity(UnityError::Format("spritesheet 缺少圖片索引".into()))
         })?;
         let payload = self.read_entry(index_loc)?;
         let mono = objects::parse_mono_behaviour(&payload, true)?;
-        let wzss_payload = payload
+        let sheet_payload = payload
             .get(mono.header_len..)
-            .ok_or_else(|| UnityError::Format("WZSS MonoBehaviour header 越界".into()))?;
-        let wzss = parse_wzss(wzss_payload)?;
-
-        // 先用 WZSS 的節點鍵精確定位；查不到才退回 UOL 反推。
-        let mut frame = if inner.is_empty() {
-            None
-        } else {
-            wzss.frame_index_for_node(inner)
-        };
-        if frame.is_none() {
-            if per_img && !inner.is_empty() {
-                let tree = self.tree_for(img_key)?;
-                frame = infer_frame_from_uol(&tree, inner, &wzss.uol_links);
-            } else if !wzss.rects.is_empty() {
-                frame = Some(0);
+            .ok_or_else(|| UnityError::Format("SpriteSheet MonoBehaviour header 越界".into()))?;
+        let sprite = if entry.index_is_asset {
+            let asset = parse_sheet_asset(sheet_payload)?;
+            if asset.path != sheet_key {
+                return Err(UnityError::Format(format!(
+                    "SpriteSheet asset 路徑不符: {} != {sheet_key}",
+                    asset.path
+                ))
+                .into());
             }
-        }
+            let found = (!inner.is_empty())
+                .then(|| asset.sprite_for_node(inner))
+                .flatten();
+            found.or_else(|| {
+                (!per_img && !inner.is_empty())
+                    .then(|| asset.first_sprite())
+                    .flatten()
+            })
+        } else {
+            let wzss = parse_wzss(sheet_payload)?;
+            // 舊版 WZSS 用節點鍵定位，少數 UOL 需要反推。
+            let mut frame = if inner.is_empty() {
+                None
+            } else {
+                wzss.frame_index_for_node(inner)
+            };
+            if frame.is_none() {
+                if per_img && !inner.is_empty() {
+                    let tree = self.tree_for(img_key)?;
+                    frame = infer_frame_from_uol(&tree, inner, &wzss.uol_links);
+                } else if !wzss.rects.is_empty() {
+                    frame = Some(0);
+                }
+            }
+            frame.and_then(|index| wzss.sprite_for_frame(index))
+        };
 
-        // frame 只需要它所在的那一頁；其餘頁不必解碼。
-        let wanted_page = frame.and_then(|index| wzss.sprite_for_frame(index).map(|s| s.page));
+        // 只解碼目標 sprite 所在的 atlas 頁。
+        let wanted_page = sprite.map(|sprite| sprite.page);
         let mut pages = Vec::new();
         for (page, loc) in &entry.atlas_pages {
             let needed = match wanted_page {
@@ -187,11 +207,9 @@ impl DataService {
             });
         }
 
-        if let Some(frame_index) = frame {
-            if let Some(sprite) = wzss.sprite_for_frame(frame_index) {
-                let (width, height, rgba) = cut_sprite(&pages, sprite)?;
-                return texture::to_png(width, height, &rgba).map_err(CatalogError::Unity);
-            }
+        if let Some(sprite) = sprite {
+            let (width, height, rgba) = cut_sprite(&pages, sprite)?;
+            return texture::to_png(width, height, &rgba).map_err(CatalogError::Unity);
         }
         if inner.is_empty() {
             let Some(page) = pages.into_iter().next() else {
@@ -207,8 +225,7 @@ impl DataService {
             return Ok(texture::to_png(width, height, &rgba)?);
         }
         Err(UnityError::Format(format!(
-            "找不到 Canvas {img_key}/{inner} 可驗證的 spritesheet frame（rect {}）",
-            wzss.rects.len(),
+            "找不到 Canvas {img_key}/{inner} 可驗證的 spritesheet frame",
         ))
         .into())
     }
