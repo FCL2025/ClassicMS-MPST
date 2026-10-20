@@ -63,7 +63,7 @@ fn hash128_byte_formats(bytes: [u8; 16]) -> HashSet<String> {
     out.insert(hex(&swapped_halves));
 
     let mut reversed_words = bytes;
-    for word in reversed_words.chunks_exact_mut(4) {
+    for word in reversed_words.as_chunks_mut::<4>().0 {
         word.reverse();
     }
     out.insert(hex(&reversed_words));
@@ -139,7 +139,9 @@ fn path_candidates(root: &str, path: &str) -> Vec<String> {
 fn hash128_seeds(hash: &str) -> Vec<(u64, u64)> {
     let bytes: Vec<u8> = hash
         .as_bytes()
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|pair| {
             u8::from_str_radix(std::str::from_utf8(pair).expect("ASCII hex"), 16)
                 .expect("valid hex")

@@ -69,7 +69,7 @@ pub fn decode_pixels(fmt: i32, width: u32, height: u32, data: &[u8]) -> Result<V
                 )));
             }
             let mut out = Vec::with_capacity(required_bytes(px, 4, "RGBA8")?);
-            for c in data[..need].chunks_exact(3) {
+            for c in data[..need].as_chunks::<3>().0 {
                 out.extend_from_slice(&[c[0], c[1], c[2], 255]);
             }
             Ok(out)
@@ -80,7 +80,7 @@ pub fn decode_pixels(fmt: i32, width: u32, height: u32, data: &[u8]) -> Result<V
                 return Err(UnityError::Format("ARGB32 長度不足".into()));
             }
             let mut out = Vec::with_capacity(need);
-            for c in data[..need].chunks_exact(4) {
+            for c in data[..need].as_chunks::<4>().0 {
                 out.extend_from_slice(&[c[1], c[2], c[3], c[0]]);
             }
             Ok(out)
@@ -91,7 +91,7 @@ pub fn decode_pixels(fmt: i32, width: u32, height: u32, data: &[u8]) -> Result<V
                 return Err(UnityError::Format("BGRA32 長度不足".into()));
             }
             let mut out = Vec::with_capacity(need);
-            for c in data[..need].chunks_exact(4) {
+            for c in data[..need].as_chunks::<4>().0 {
                 out.extend_from_slice(&[c[2], c[1], c[0], c[3]]);
             }
             Ok(out)
