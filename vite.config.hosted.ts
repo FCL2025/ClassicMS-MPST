@@ -13,7 +13,24 @@ const hostedApi = fileURLToPath(new URL("./src/api.hosted.ts", import.meta.url))
 //    環境變數 VITE_HOSTED_DATA_BASE 永遠最優先。
 // 3. 獨立 outDir dist-hosted/，不覆蓋桌面版 dist/ 與 web 版 dist-web/。
 export default defineConfig(({ command }) => ({
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      name: "cloudflare-web-analytics",
+      apply: "build",
+      transformIndexHtml() {
+        return [{
+          tag: "script",
+          attrs: {
+            type: "module",
+            src: "https://static.cloudflareinsights.com/beacon.min.js",
+            "data-cf-beacon": '{"token":"e9db8aab1d0d4951ab51e826f06853c0"}',
+          },
+          injectTo: "body" as const,
+        }];
+      },
+    },
+  ],
   clearScreen: false,
   define: {
     __WEB_BUILD__: "true",
