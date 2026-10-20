@@ -316,6 +316,7 @@ fn value_as_i64(value: &Value) -> Option<i64> {
         Value::U8(v) => Some(i64::from(*v)),
         Value::U16(v) => Some(i64::from(*v)),
         Value::Int(v) => Some(i64::from(*v)),
+        Value::Long(v) => Some(*v),
         Value::Int2(a, _) => Some(i64::from(*a)),
         Value::Double(v) => Some(*v as i64),
         _ => None,

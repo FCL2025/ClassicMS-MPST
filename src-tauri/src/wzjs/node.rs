@@ -25,6 +25,7 @@ pub fn is_image_capable_tag(type_tag: i32) -> bool {
 /// | 3 | u8（slot1 section，實測為 0/1 bool 類） |
 /// | 5 | u16（slot3 section） |
 /// | 6 | i32（slot4 section） |
+/// | 7 | i64（slot5 section） |
 /// | 8 | 數值對 8 bytes（slot6 section）：通常是 2×f32（fs / mobRate / probability），
 ///     但同一屬性名（swim / recovery）在不同 img 裡有 int bits 與 float bits 兩種寫法——
 ///     格式層無法區分，以「denormal 即 int」啟發式分流成 [`Value::Int2`] |
@@ -44,6 +45,7 @@ pub enum Value {
     U8(u8),
     U16(u16),
     Int(i32),
+    Long(i64),
     /// type 8：section entry 固定 8 bytes = 2 個 f32（語意依節點而定）。
     Float2(f32, f32),
     /// type 8 的變體：bits 為 denormal（指數全 0 且非零）時判定是 int bits。

@@ -167,6 +167,7 @@ function valueAsI64(value: Value): number | null {
     case "U8":
     case "U16":
     case "Int":
+    case "Long":
       return value.value;
     case "Int2":
       return value.value[0];

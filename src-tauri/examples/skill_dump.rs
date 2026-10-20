@@ -275,6 +275,7 @@ fn leaf_json(v: &Value) -> serde_json::Value {
         Value::U8(n) => json!(n),
         Value::U16(n) => json!(n),
         Value::Int(n) => json!(n),
+        Value::Long(n) => json!(n),
         Value::Double(f) => json!(f),
         Value::Float2(x, y) | Value::Vector(x, y) => json!([x, y]),
         Value::Int2(a, b) => json!([a, b]),

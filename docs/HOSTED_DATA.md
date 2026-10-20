@@ -2,6 +2,7 @@
 
 > 狀態：**M1 完成**（2026-08-04 pipeline 全量跑完，見「M1 實測結果」）
 > 目標：Web 版使用者打開網頁即可瀏覽全部遊戲資料，不再需要選擇本機資料夾。
+> 目前線上資料集：`v20261020`（2026-10-20 遊戲檔案）。
 
 ## 背景
 
@@ -182,7 +183,7 @@ bash scripts/hosted_to_webp.sh out/hosted/v20260804   # PNG → lossless WebP（
   `scripts/serve_hosted.mjs`（port 8788，CORS `*`）+ vite（port 1422））；
   `npm run build:hosted` 建到 `dist-hosted/`。資料根與版本由
   `VITE_HOSTED_DATA_BASE` / `VITE_HOSTED_DATA_VERSION` 環境變數覆寫
-  （預設 `http://localhost:8788` / `v20260804`）。
+  （預設 `http://localhost:8788` / `v20261020`）。
 - 驗證全過：`npm run build`（桌面）、`npm run build:hosted`、curl 靜態端點
   （MIME/CORS/404/防穿越）、node 端對端（openDataDir→listChildren→getNode→
   searchNodes→UOL 解析）。
@@ -259,7 +260,7 @@ vite.config.hosted.ts：build 時資料根預設同源 `/data`（dev 仍是 loca
 1. `npx wrangler login`（瀏覽器授權 Cloudflare）
 2. `npx wrangler r2 bucket create msclassic-data`
 3. 建立 R2 API token 並填進 `.env`（見下方「資料上傳的速率限制」；沒填會退回很慢的路徑）
-4. `npm run upload:hosted-data -- v20260804`（約 3 萬檔，中斷可直接重跑續傳）
+4. `npm run upload:hosted-data -- v20261020`（中斷可直接重跑續傳）
 5. `npm run deploy:hosted`（部署預覽 Worker 到 `msclassic-hosted.<帳號子域>.workers.dev`）
 6. 網域（2026-08-04 已定案）：正式站 `classic.maplepstutorial.com` 直接換成
    hosted 版——根目錄 `wrangler.jsonc` 改為 hosted 設定（`main: workers/hosted.js`

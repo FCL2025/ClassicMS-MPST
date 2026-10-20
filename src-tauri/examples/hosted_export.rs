@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use msclassic::catalog::{DataService, EntryLocation};
-use msclassic::image::{parse_wzss, WzssIndex};
+use msclassic::image::{parse_sheet_asset, parse_wzss, SheetAsset, WzssIndex, WzssSprite};
 use msclassic::unity::bundle::Bundle;
 use msclassic::unity::objects;
 use msclassic::unity::serialized_file::{metadata_len, SerializedFile, HEADER_SIZE};
@@ -254,36 +254,55 @@ fn export_one_tree(
 ) -> Result<u64, Box<dyn std::error::Error>> {
     let tree = svc.tree_for(img_key)?;
 
-    // 同一 img 的 spritesheet（key == img 邏輯路徑）；有才解析 WZSS。
-    let wzss = match svc.catalog.image.sheets.get(img_key) {
+    // 同一 img 的 spritesheet（key == img 邏輯路徑）。
+    let sheet_index = match svc.catalog.image.sheets.get(img_key) {
         Some(sheet) => match &sheet.index_loc {
             Some(index_loc) => {
                 let payload = svc.read_entry(index_loc)?;
                 let mono = objects::parse_mono_behaviour(&payload, true)?;
-                Some(parse_wzss(
-                    payload
-                        .get(mono.header_len..)
-                        .ok_or("WZSS MonoBehaviour header 越界")?,
-                )?)
+                let body = payload
+                    .get(mono.header_len..)
+                    .ok_or("SpriteSheet MonoBehaviour header 越界")?;
+                Some(if sheet.index_is_asset {
+                    SheetLookup::Asset(parse_sheet_asset(body)?)
+                } else {
+                    SheetLookup::Wzss(parse_wzss(body)?)
+                })
             }
             None => None,
         },
         None => None,
     };
 
-    let root = node_to_json(&tree, "", img_key, wzss.as_ref(), stats);
+    let root = node_to_json(&tree, "", img_key, sheet_index.as_ref(), stats);
     let json = serde_json::to_vec(&root)?;
     let out_path = tree_dir.join(safe_rel_path(img_key)).with_extension("json");
     write_json_gz(&out_path, &json)
 }
 
+enum SheetLookup {
+    Wzss(WzssIndex),
+    Asset(SheetAsset),
+}
+
+impl SheetLookup {
+    fn sprite_for_node(&self, inner: &str) -> Option<WzssSprite> {
+        match self {
+            Self::Wzss(index) => index
+                .frame_index_for_node(inner)
+                .and_then(|frame| index.sprite_for_frame(frame)),
+            Self::Asset(index) => index.sprite_for_node(inner),
+        }
+    }
+}
+
 /// WzNode → 託管用 tree JSON（自訂形狀，不動 WzNode 本身的 Serialize）。
-/// `inner` 是 img 內相對路徑（根為 ""），用來查 WZSS 節點鍵。
+/// `inner` 是 img 內相對路徑（根為 ""），用來查 SpriteSheet 節點鍵。
 fn node_to_json(
     node: &WzNode,
     inner: &str,
     sheet_key: &str,
-    wzss: Option<&WzssIndex>,
+    sheet_index: Option<&SheetLookup>,
     stats: &mut Stats,
 ) -> serde_json::Value {
     let mut obj = serde_json::json!({
@@ -295,9 +314,7 @@ fn node_to_json(
 
     if is_canvas_tag(node.type_tag) {
         stats.canvas_total += 1;
-        let sprite = wzss
-            .and_then(|w| w.frame_index_for_node(inner))
-            .and_then(|frame| wzss.and_then(|w| w.sprite_for_frame(frame)));
+        let sprite = sheet_index.and_then(|index| index.sprite_for_node(inner));
         if let Some(sprite) = sprite {
             stats.canvas_resolved += 1;
             let (ox, oy) = canvas_origin(node);
@@ -329,7 +346,7 @@ fn node_to_json(
                 } else {
                     format!("{inner}/{}", child.name)
                 };
-                node_to_json(child, &child_inner, sheet_key, wzss, stats)
+                node_to_json(child, &child_inner, sheet_key, sheet_index, stats)
             })
             .collect();
         map.insert("children".to_string(), serde_json::Value::Array(children));
@@ -690,6 +707,7 @@ fn node_as_i64(value: &Value) -> Option<i64> {
         Value::U8(v) => Some(i64::from(*v)),
         Value::U16(v) => Some(i64::from(*v)),
         Value::Int(v) => Some(i64::from(*v)),
+        Value::Long(v) => Some(*v),
         Value::Int2(a, _) => Some(i64::from(*a)),
         Value::Double(v) => Some(*v as i64),
         _ => None,

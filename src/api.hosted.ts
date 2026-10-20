@@ -309,6 +309,7 @@ export function typeLabel(tag: number): string {
     case 3: return "u8";
     case 5: return "u16";
     case 6: return "int";
+    case 7: return "long";
     case 8: return "float2";
     case 9: return "double";
     case 11: return "string";
@@ -325,7 +326,7 @@ export function formatValue(v: Value): string {
   switch (v.type) {
     case "SubTree": return "(子樹)";
     case "Canvas": return "(圖片)";
-    case "U8": case "U16": case "Int": return String(v.value);
+    case "U8": case "U16": case "Int": case "Long": return String(v.value);
     case "Double": return String(v.value);
     case "Float2": case "Vector": case "Int2": return `(${v.value[0]}, ${v.value[1]})`;
     case "Str": return v.value;

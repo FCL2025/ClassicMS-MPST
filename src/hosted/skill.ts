@@ -133,6 +133,7 @@ function valueAsI64(value: Value): number | null {
     case "U8":
     case "U16":
     case "Int":
+    case "Long":
     case "Double":
       return value.value;
     case "Int2":
@@ -189,6 +190,7 @@ function leafJson(value: Value): LevelJson {
     case "U8":
     case "U16":
     case "Int":
+    case "Long":
     case "Double":
       return value.value;
     case "Float2":

@@ -18,6 +18,7 @@ convert_one() {
     rm "$f"
   else
     echo "轉檔失敗: $f" >&2
+    return 1
   fi
 }
 export -f convert_one
@@ -26,4 +27,6 @@ find "$DIR/sheets" "$DIR/textures" -name '*.png' -print0 |
   xargs -0 -P "$(nproc)" -I{} bash -c 'convert_one "$@"' _ {}
 
 echo "完成。剩餘 PNG 數（應為 0）："
-find "$DIR/sheets" "$DIR/textures" -name '*.png' | wc -l
+remaining=$(find "$DIR/sheets" "$DIR/textures" -name '*.png' | wc -l)
+echo "$remaining"
+test "$remaining" -eq 0

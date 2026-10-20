@@ -17,6 +17,7 @@ fn val_short(v: &Value) -> String {
         Value::U8(n) => format!("U8({n})"),
         Value::U16(n) => format!("U16({n})"),
         Value::Int(n) => format!("Int({n})"),
+        Value::Long(n) => format!("Long({n})"),
         Value::Float2(a, b) => format!("Float2({a},{b})"),
         Value::Int2(a, b) => format!("Int2({a},{b})"),
         Value::Double(d) => format!("Double({d})"),

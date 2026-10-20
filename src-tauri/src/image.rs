@@ -45,7 +45,7 @@ use crate::unity::Result;
 
 mod sheet_asset;
 mod wzss;
-pub(crate) use sheet_asset::parse_sheet_asset;
+pub use sheet_asset::{parse_sheet_asset, SheetAsset};
 pub use wzss::{cut_sprite, parse_wzss, AtlasPage, WzssIndex, WzssRect, WzssSprite, WzssUolLink};
 
 /// spritesheet：索引物件 + atlas 頁（依 _0, _1… 排序）。

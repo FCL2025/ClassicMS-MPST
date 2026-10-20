@@ -22,7 +22,7 @@ export default defineConfig(({ command }) => ({
         (command === "build" ? "/data" : "http://localhost:8788"),
     ),
     __HOSTED_DATA_VERSION__: JSON.stringify(
-      process.env.VITE_HOSTED_DATA_VERSION ?? "v20260804",
+      process.env.VITE_HOSTED_DATA_VERSION ?? "v20261020",
     ),
   },
   resolve: {

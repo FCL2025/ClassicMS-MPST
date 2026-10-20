@@ -49,6 +49,7 @@ export type Value =
   | { type: "U8"; value: number }
   | { type: "U16"; value: number }
   | { type: "Int"; value: number }
+  | { type: "Long"; value: number }
   | { type: "Float2"; value: [number, number] }
   | { type: "Int2"; value: [number, number] }
   | { type: "Double"; value: number }

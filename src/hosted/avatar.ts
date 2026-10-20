@@ -233,6 +233,7 @@ function valueAsI32(value: Value): number | null {
     case "U8":
     case "U16":
     case "Int":
+    case "Long":
       return value.value;
     case "Int2":
       return value.value[0];
@@ -284,7 +285,7 @@ function zIndex(node: TreeNode): number {
     const index = ZMAP.indexOf(value.value);
     return index === -1 ? ZMAP.length : index;
   }
-  if (value.type === "U16" || value.type === "Int") return intZIndex(value.value);
+  if (value.type === "U16" || value.type === "Int" || value.type === "Long") return intZIndex(value.value);
   return ZMAP.length;
 }
 

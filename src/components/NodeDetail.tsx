@@ -95,6 +95,7 @@ function numericValue(v: Value): number | null {
     case "U8":
     case "U16":
     case "Int":
+    case "Long":
     case "Double":
       return v.value;
     default:

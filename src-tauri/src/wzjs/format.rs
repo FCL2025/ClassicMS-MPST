@@ -13,10 +13,11 @@
 //!             slot1 = type 3 的值（u8 陣列）
 //!             slot3 = type 5 的值（u16 陣列）
 //!             slot4 = type 6 的值（i32 陣列）
+//!             slot5 = type 7 的值（i64 陣列）
 //!             slot6 = type 8 的值（8 bytes/筆 = 2×f32）
 //!             slot7 = type 14 的值（8 bytes/筆 = vector 2×f32）
 //!             slot8 = type 9 的值（f64 陣列）
-//!             slot 2/5/9/10/11 全部樣本皆為空
+//!             slot 2/9/10/11 全部樣本皆為空
 //! [144..148)  magic "WZJS"
 //! [148..152)  u32 version = 5
 //! [152..)     節點記錄 nodeCount × 32 bytes（8 × i32，見下）
@@ -229,7 +230,7 @@ pub fn parse(data: &[u8]) -> Result<WzNode> {
     let sec_count = |s: usize| sec_counts[s];
     let sec_off = |s: usize| sec_offsets[s];
     // 未使用的 slot 必須為空
-    for s in [2usize, 5, 9, 10, 11] {
+    for s in [2usize, 9, 10, 11] {
         if sec_count(s) != 0 {
             return Err(WzjsError::Format(format!(
                 "slot{s} 應為空但 count = {}",
@@ -249,6 +250,7 @@ pub fn parse(data: &[u8]) -> Result<WzNode> {
         (1, 1),
         (3, 2),
         (4, 4),
+        (5, 8),
         (6, 8),
         (7, 8),
         (8, 8),
@@ -381,7 +383,7 @@ pub fn parse(data: &[u8]) -> Result<WzNode> {
     }
 
     // ── 值 sections 預載 ──
-    // slot1: u8、slot3: u16、slot4: i32、slot6: 2×f32、slot7: 2×f32、slot8: f64
+    // slot1: u8、slot3: u16、slot4: i32、slot5: i64、slot6: 2×f32、slot7: 2×f32、slot8: f64
     let read_u16 = |idx: i32| -> Result<u16> {
         if idx < 0 || idx as usize >= sec_count(3) {
             return Err(WzjsError::IndexOutOfRange(format!(
@@ -465,6 +467,10 @@ pub fn parse(data: &[u8]) -> Result<WzNode> {
             3 => Value::U8(read_u8(f2)?),
             5 => Value::U16(read_u16(f2)?),
             6 => Value::Int(sec_u32(4, f2)? as i32),
+            7 => {
+                let (lo, hi) = sec_u32x2(5, f2)?;
+                Value::Long(((hi as u64) << 32 | lo as u64) as i64)
+            }
             8 => {
                 let (a, b) = sec_u32x2(6, f2)?;
                 // 格式層無法區分 2×f32 與 2×i32（同一屬性名兩種寫法都存在）。

@@ -1052,6 +1052,9 @@ fn z_index(node: &WzNode) -> i32 {
             .unwrap_or(ZMAP.len() as i32),
         Some(Value::U16(n)) => int_z_index(i32::from(*n)),
         Some(Value::Int(n)) => int_z_index(*n),
+        Some(Value::Long(n)) => i32::try_from(*n)
+            .map(int_z_index)
+            .unwrap_or(ZMAP.len() as i32),
         _ => ZMAP.len() as i32,
     }
 }
@@ -1170,6 +1173,7 @@ fn value_as_i32(value: &Value) -> Option<i32> {
         Value::U8(v) => Some(i32::from(*v)),
         Value::U16(v) => Some(i32::from(*v)),
         Value::Int(v) => Some(*v),
+        Value::Long(v) => i32::try_from(*v).ok(),
         Value::Int2(a, _) => Some(*a),
         Value::Double(v) => Some(*v as i32),
         _ => None,
