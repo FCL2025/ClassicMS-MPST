@@ -11,9 +11,11 @@ import {
   type SkinInfo,
 } from "../api";
 import { AvatarEquipPanel } from "./AvatarEquipPanel";
-import { AvatarPreview } from "./AvatarPreview";
+import { AvatarAlbumDialog } from "./AvatarAlbumDialog";
+import { AvatarPreview, type AvatarPreviewHandle } from "./AvatarPreview";
 import { AvatarShop } from "./AvatarShop";
 import { joinColorId, resolveColorVariant, splitColorId } from "./avatarColor";
+import { deleteAvatarLook, listAvatarLooks, saveAvatarLook, type AvatarLook } from "./avatarAlbum";
 
 // 可穿的裝備部位（body/head 是膚色，不在此列）。
 export type EquipSlot =
@@ -75,6 +77,35 @@ export function AvatarPage({
   const [framesLoading, setFramesLoading] = useState(false);
   const [framesError, setFramesError] = useState<string | null>(null);
   const framesGenerationRef = useRef(0);
+  const previewRef = useRef<AvatarPreviewHandle>(null);
+  const restoreEmotionRef = useRef<{ faceId: string; emotion: string } | null>(null);
+  const [looks, setLooks] = useState<AvatarLook[]>([]);
+  const [albumMode, setAlbumMode] = useState<"save" | "gallery" | null>(null);
+  const [pendingThumbnail, setPendingThumbnail] = useState<string | null>(null);
+  const [albumBusy, setAlbumBusy] = useState(false);
+  const [albumLoading, setAlbumLoading] = useState(true);
+  const [albumError, setAlbumError] = useState<string | null>(null);
+  const [albumNotice, setAlbumNotice] = useState<string | null>(null);
+  const albumRefreshRef = useRef(0);
+
+  const refreshAlbum = useCallback(async () => {
+    const generation = ++albumRefreshRef.current;
+    setAlbumLoading(true);
+    setAlbumError(null);
+    try {
+      const saved = await listAvatarLooks();
+      if (generation === albumRefreshRef.current) setLooks(saved);
+    } catch (error) {
+      if (generation === albumRefreshRef.current) setAlbumError(`無法讀取相簿：${String(error)}`);
+    } finally {
+      if (generation === albumRefreshRef.current) setAlbumLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshAlbum();
+    return () => { albumRefreshRef.current += 1; };
+  }, [refreshAlbum]);
 
   // 換色時查 variant 是否存在用（全裝備 id 集合）。
   const equipmentIds = useMemo(
@@ -125,12 +156,15 @@ export function AvatarPage({
       .then((list) => {
         if (!active) return;
         setEmotions(list.length > 0 ? list : ["default"]);
-        setEmotion("default");
+        const restored = restoreEmotionRef.current;
+        setEmotion(restored?.faceId === faceId && list.includes(restored.emotion) ? restored.emotion : "default");
+        restoreEmotionRef.current = null;
       })
       .catch(() => {
         if (!active) return;
         setEmotions(["default"]);
         setEmotion("default");
+        restoreEmotionRef.current = null;
       });
     return () => {
       active = false;
@@ -215,6 +249,111 @@ export function AvatarPage({
     });
   }, []);
 
+  const startSave = () => {
+    setAlbumError(null);
+    setAlbumNotice(null);
+    const thumbnail = previewRef.current?.captureThumbnail() ?? null;
+    if (!thumbnail) {
+      setAlbumError("角色預覽尚未完成，請等貼圖載入後再儲存。");
+      return;
+    }
+    setPendingThumbnail(thumbnail);
+    setAlbumMode("save");
+  };
+
+  const openGallery = () => {
+    setAlbumNotice(null);
+    setAlbumMode("gallery");
+    void refreshAlbum();
+  };
+
+  const saveLook = async (name: string) => {
+    if (!skin || !pendingThumbnail) return;
+    const look: AvatarLook = {
+      id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name,
+      createdAt: Date.now(),
+      thumbnail: pendingThumbnail,
+      skinBodyId: skin.bodyId,
+      action,
+      emotion,
+      hairColor,
+      faceColor,
+      hairCover,
+      hairShade,
+      parts: structuredClone(parts),
+    };
+    setAlbumBusy(true);
+    setAlbumError(null);
+    try {
+      await saveAvatarLook(look);
+      setLooks((previous) => [look, ...previous]);
+      setPendingThumbnail(null);
+      setAlbumMode("gallery");
+      setAlbumNotice(`已儲存「${name}」`);
+    } catch (error) {
+      setAlbumError(`無法儲存外觀：${String(error)}`);
+    } finally {
+      setAlbumBusy(false);
+    }
+  };
+
+  const applyLook = (look: AvatarLook) => {
+    if (!meta || !equipment) return;
+    const nextSkin = meta.skins.find((candidate) => candidate.bodyId === look.skinBodyId);
+    const nextParts: PartsState = {};
+    let missing = 0;
+    for (const [slot, part] of Object.entries(look.parts)) {
+      if (!part) continue;
+      if (equipmentIds.has(part.id)) nextParts[slot as EquipSlot] = { ...part };
+      else missing += 1;
+    }
+    const nextFaceId = nextParts.face?.id ?? resolveColorVariant("face", DEFAULT_FACE_ID, look.faceColor, idExists);
+    restoreEmotionRef.current = nextFaceId === faceId ? null : { faceId: nextFaceId, emotion: look.emotion };
+    setSkin(nextSkin ?? meta.skins[0] ?? null);
+    setAction(meta.actions.includes(look.action) ? look.action : meta.actions[0] ?? "stand1");
+    setParts(nextParts);
+    setHairColor(look.hairColor);
+    setFaceColor(look.faceColor);
+    setHairCover(look.hairCover);
+    setHairShade(look.hairShade);
+    if (nextFaceId === faceId) setEmotion(emotions.includes(look.emotion) ? look.emotion : "default");
+    setAlbumMode(null);
+    setAlbumNotice(missing > 0 || !nextSkin
+      ? `已套用「${look.name}」；目前資料中有部分外觀內容無法使用。`
+      : `已套用「${look.name}」`);
+  };
+
+  const renameLook = async (look: AvatarLook, name: string) => {
+    setAlbumBusy(true);
+    setAlbumError(null);
+    try {
+      await saveAvatarLook({ ...look, name });
+      setLooks((previous) => previous.map((item) => item.id === look.id ? { ...item, name } : item));
+      return true;
+    } catch (error) {
+      setAlbumError(`無法重新命名：${String(error)}`);
+      return false;
+    } finally {
+      setAlbumBusy(false);
+    }
+  };
+
+  const removeLook = async (look: AvatarLook) => {
+    setAlbumBusy(true);
+    setAlbumError(null);
+    try {
+      await deleteAvatarLook(look.id);
+      setLooks((previous) => previous.filter((item) => item.id !== look.id));
+      return true;
+    } catch (error) {
+      setAlbumError(`無法刪除外觀：${String(error)}`);
+      return false;
+    } finally {
+      setAlbumBusy(false);
+    }
+  };
+
   let content;
   if (loadError) {
     content = <p className="avatar-page-status">紙娃娃資料載入失敗：{loadError}</p>;
@@ -228,6 +367,7 @@ export function AvatarPage({
         <aside className="avatar-left">
           <div className="avatar-left-preview">
             <AvatarPreview
+              ref={previewRef}
               frames={frames}
               loading={framesLoading}
               error={framesError}
@@ -236,6 +376,17 @@ export function AvatarPage({
               action={action}
             />
           </div>
+          <div className="avatar-album-entry">
+            <button type="button" disabled={albumLoading} onClick={startSave}>儲存外觀</button>
+            <button type="button" onClick={openGallery}>
+              我的相簿 <span>{looks.length}</span>
+            </button>
+          </div>
+          {albumNotice || albumError ? (
+            <p className={`avatar-album-status${albumError ? " is-error" : ""}`} role="status">
+              {albumError ?? albumNotice}
+            </p>
+          ) : null}
           <div className="avatar-left-controls">
             <AvatarEquipPanel
               skins={meta.skins}
@@ -283,6 +434,23 @@ export function AvatarPage({
   return (
     <div className="avatar-page" hidden={!visible}>
       {content}
+      {albumMode ? (
+        <AvatarAlbumDialog
+          mode={albumMode}
+          looks={looks}
+          thumbnail={pendingThumbnail}
+          defaultName={`外觀 ${looks.length + 1}`}
+          busy={albumBusy}
+          loading={albumLoading}
+          error={albumError}
+          onClose={() => { setAlbumMode(null); setAlbumError(null); }}
+          onSave={(name) => void saveLook(name)}
+          onApply={applyLook}
+          onRename={renameLook}
+          onDelete={removeLook}
+          onStartSave={startSave}
+        />
+      ) : null}
     </div>
   );
 }

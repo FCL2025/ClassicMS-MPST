@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { getImage, type AvatarFrames } from "../api";
 import {
   buildSequence,
@@ -51,11 +51,22 @@ interface AvatarPreviewProps {
   action: string;
 }
 
+export interface AvatarPreviewHandle {
+  captureThumbnail: () => string | null;
+}
+
 // 正方形 canvas 預覽：棋盤格背景（CSS），body / face / ItemEff 特效三條動畫各自循環再疊加。
-export function AvatarPreview({ frames, loading, error, playing, active, action }: AvatarPreviewProps) {
+export const AvatarPreview = forwardRef<AvatarPreviewHandle, AvatarPreviewProps>(function AvatarPreview(
+  { frames, loading, error, playing, active, action },
+  ref,
+) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [images, setImages] = useState<Map<string, HTMLImageElement> | null>(null);
+  const [imageSet, setImageSet] = useState<{
+    frames: AvatarFrames;
+    images: Map<string, HTMLImageElement>;
+  } | null>(null);
+  const images = imageSet?.frames === frames ? imageSet.images : null;
   const [imagesError, setImagesError] = useState<string | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   // 目前動畫時間：暫停時凍結在這一幀，再播放從這裡繼續。
@@ -83,11 +94,11 @@ export function AvatarPreview({ frames, loading, error, playing, active, action 
   // 收到新幀資料後，收齊所有 layer 貼圖才開始播（generation guard 防舊回應覆蓋）。
   useEffect(() => {
     if (!frames) {
-      setImages(null);
+      setImageSet(null);
       return;
     }
     let cancelled = false;
-    setImages(null);
+    setImageSet(null);
     setImagesError(null);
     // 新動畫從頭播。
     timeRef.current = 0;
@@ -104,7 +115,7 @@ export function AvatarPreview({ frames, loading, error, playing, active, action 
         for (const [path, img] of entries) {
           if (img) next.set(path, img);
         }
-        setImages(next);
+        setImageSet({ frames, images: next });
       })
       .catch((nextError) => {
         if (!cancelled) setImagesError(String(nextError));
@@ -113,6 +124,36 @@ export function AvatarPreview({ frames, loading, error, playing, active, action 
       cancelled = true;
     };
   }, [frames]);
+
+  useImperativeHandle(ref, () => ({
+    captureThumbnail: () => {
+      if (!frames || !images || loading || error || imagesError) return null;
+      const box = computeBoundingBox(frames, images);
+      const body = buildSequence(frames.frames);
+      if (!box || !body) return null;
+      const thumbnail = document.createElement("canvas");
+      thumbnail.width = 160;
+      thumbnail.height = 160;
+      const ctx = thumbnail.getContext("2d");
+      if (!ctx) return null;
+      const face = buildSequence(frames.faceFrames);
+      const effect = buildSequence(frames.effectFrames);
+      const fit = Math.min((160 - 16) / box.width, (160 - 16) / box.height);
+      const scale = fit >= 1 ? Math.max(1, Math.floor(fit)) : fit;
+      composeFrame(
+        ctx,
+        frames,
+        images,
+        frameIndexAt(body, timeRef.current),
+        face ? frameIndexAt(face, timeRef.current) : -1,
+        effect ? frameIndexAt(effect, timeRef.current) : -1,
+        Math.round((160 - box.width * scale) / 2 - box.minX * scale),
+        Math.round((160 - box.height * scale) / 2 - box.minY * scale),
+        scale,
+      );
+      return thumbnail.toDataURL("image/png");
+    },
+  }), [frames, images, loading, error, imagesError]);
 
   const bodySequence = buildSequence(frames?.frames);
   const faceSequence = buildSequence(frames?.faceFrames);
@@ -320,4 +361,4 @@ export function AvatarPreview({ frames, loading, error, playing, active, action 
       ) : null}
     </div>
   );
-}
+});
