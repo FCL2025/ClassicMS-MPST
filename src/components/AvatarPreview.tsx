@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { getImage, type AvatarFrames } from "../api";
+import { getImage, type AvatarFrame, type AvatarFrames } from "../api";
 import {
   buildSequence,
   composeFrame,
@@ -39,6 +39,34 @@ function loadLayerImage(path: string): Promise<HTMLImageElement | null> {
     imageCache.set(path, cached);
   }
   return cached;
+}
+
+/** 本機資料同樣可能缺單幀貼圖；從同一動作鄰近幀沿用同件裝備的圖。 */
+function fillMissingFrameImages(frames: AvatarFrame[], images: Map<string, HTMLImageElement>): void {
+  const exact = new Map(images);
+  const layerKey = (path: string) => {
+    const segments = path.split("/");
+    const assetLength = segments[0] === "Character" && /^\d+$/.test(segments[1]) ? 2 : 3;
+    return `${segments.slice(0, assetLength).join("/")}/${segments.at(-1)}`;
+  };
+  frames.forEach((frame, index) => {
+    for (const layer of frame.layers) {
+      if (images.has(layer.path)) continue;
+      const key = layerKey(layer.path);
+      for (let distance = 1; distance < frames.length; distance += 1) {
+        const nearby = [index - distance, index + distance];
+        const candidates = nearby
+          .filter((candidate) => candidate >= 0 && candidate < frames.length)
+          .flatMap((candidate) => frames[candidate].layers)
+          .filter((candidate) => layerKey(candidate.path) === key && exact.has(candidate.path));
+        const donor = candidates.find((candidate) => candidate.z === layer.z) ?? candidates[0];
+        if (donor) {
+          images.set(layer.path, exact.get(donor.path)!);
+          break;
+        }
+      }
+    }
+  });
 }
 
 interface AvatarPreviewProps {
@@ -116,6 +144,7 @@ export const AvatarPreview = forwardRef<AvatarPreviewHandle, AvatarPreviewProps>
         for (const [path, img] of entries) {
           if (img) next.set(path, img);
         }
+        fillMissingFrameImages(frames.frames, next);
         setImageSet({ frames, images: next });
       })
       .catch((nextError) => {

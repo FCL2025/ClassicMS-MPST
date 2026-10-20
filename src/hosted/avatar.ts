@@ -348,6 +348,8 @@ interface ResolvedPart {
   tree: TreeNode;
   /** 每幀在 img 內的相對路徑（已解析）。 */
   frames: string[];
+  canvases: CollectedCanvas[][];
+  sourceCanvases: CollectedCanvas[];
 }
 
 /** slot + id → img 路徑（avatar.rs:632）。 */
@@ -449,7 +451,12 @@ async function resolvePart(
     .map((rel) => resolveFrame(tree, rel))
     .filter((rel): rel is string => rel != null);
   if (frames.length === 0) return null;
-  return { slot: part.slot, imgKey, tree, frames };
+  const canvases = frames.map((rel) => {
+    const frame = findNode(tree, rel);
+    return frame ? collectCanvases(tree, rel, frame) : [];
+  });
+  const sourceCanvases = ["body", "head", "face"].includes(part.slot) ? [] : collectExactCanvases(tree);
+  return { slot: part.slot, imgKey, tree, frames, canvases, sourceCanvases };
 }
 
 // ---------------------------------------------------------------------------
@@ -491,6 +498,56 @@ function collectCanvases(root: TreeNode, frameRel: string, frame: TreeNode): Col
     }
   }
   return out;
+}
+
+/** 同一裝備內可精確切出的圖片，供整個動作都缺某圖層時取近似畫面。 */
+function collectExactCanvases(root: TreeNode): CollectedCanvas[] {
+  const out: CollectedCanvas[] = [];
+  const walk = (node: TreeNode, rel: string) => {
+    if (node.value.type === "Canvas" && node.canvas && !rel.startsWith("info/")) {
+      out.push({ node, rel });
+    }
+    for (const child of node.children ?? []) {
+      walk(child, rel ? `${rel}/${child.name}` : child.name);
+    }
+  };
+  walk(root, "");
+  return out;
+}
+
+/** 動作幀沒有單圖索引時，沿用同部位、同圖層最近幀的貼圖；位置仍由當前幀計算。 */
+function canvasImageRel(part: ResolvedPart, frameIndex: number, canvas: CollectedCanvas): string | null {
+  if (canvas.node.canvas) return canvas.rel;
+  // 本體和表情不能拿其他幀代替，否則會改變動作或表情。
+  if (part.slot === "body" || part.slot === "head" || part.slot === "face") return null;
+  const sameLayer = ({ node }: CollectedCanvas) =>
+    node.canvas && node.name === canvas.node.name && zStr(node) === zStr(canvas.node);
+  for (let distance = 1; distance < part.canvases.length; distance += 1) {
+    for (const candidate of [frameIndex - distance, frameIndex + distance]) {
+      const match = part.canvases[candidate]?.find(sameLayer);
+      if (match) return match.rel;
+    }
+  }
+  // 整個動作都沒有該圖層時，找同一裝備其他動作中姿勢最接近的貼圖。
+  const targetAction = part.frames[frameIndex].replace(/\/[^/]+$/, "");
+  const targetOrigin = vectorProp(canvas.node, "origin") ?? [0, 0];
+  const sameZ = part.sourceCanvases.filter(sameLayer);
+  const sources = sameZ.length > 0 ? sameZ : part.sourceCanvases.filter(
+    ({ node }) => node.name === canvas.node.name,
+  );
+  let best: { rel: string; prefix: number; distance: number } | null = null;
+  for (const source of sources) {
+    const sourceFrame = source.rel.replace(/\/[^/]+$/, "");
+    let prefix = 0;
+    while (prefix < targetAction.length && targetAction[prefix] === sourceFrame[prefix]) prefix += 1;
+    const sourceOrigin = vectorProp(source.node, "origin") ?? [0, 0];
+    const distance = (targetOrigin[0] - sourceOrigin[0]) ** 2 +
+      (targetOrigin[1] - sourceOrigin[1]) ** 2;
+    if (!best || prefix > best.prefix || (prefix === best.prefix && distance < best.distance)) {
+      best = { rel: source.rel, prefix, distance };
+    }
+  }
+  return best?.rel ?? null;
 }
 
 type Anchors = Map<string, [number, number]>;
@@ -728,10 +785,10 @@ export async function getAvatarFrames(
 
   // 幀間基準點：以第 0 幀 body canvas 的 origin 為整個動作的固定基準；
   // 每幀 shift = origin_0 - origin_i + move（無 body canvas 的幀不位移）。
-  const bodyOrigins: ([number, number] | null)[] = body.frames.map((rel) => {
+  const bodyOrigins: ([number, number] | null)[] = body.frames.map((rel, index) => {
     const frameNode = findNode(body.tree, rel);
     if (!frameNode) return null;
-    const bodyCanvas = collectCanvases(body.tree, rel, frameNode).find(
+    const bodyCanvas = body.canvases[index].find(
       (c) => c.node.name === "body",
     );
     return bodyCanvas ? vectorProp(bodyCanvas.node, "origin") : null;
@@ -756,13 +813,14 @@ export async function getAvatarFrames(
     for (const part of resolved) {
       // 臉不參與主迴圈：改用 faceAnchor/showFace 讓前端繪製當下配對
       if (part.slot === "face") continue;
-      const rel = part.frames[wrapIndex(i, part.frames.length)];
+      const partFrameIndex = wrapIndex(i, part.frames.length);
+      const rel = part.frames[partFrameIndex];
       const frameNode = findNode(part.tree, rel);
       if (!frameNode) continue;
       if (part.slot === "body") {
         showFace = frameFaceVisible(frameNode);
       }
-      const canvases = collectCanvases(part.tree, rel, frameNode);
+      const canvases = [...part.canvases[partFrameIndex]];
       if (part.slot === "body") {
         // body canvas 必須最先放（它的錨點是全角色的對齊基準）
         canvases.sort((a, b) => (a.node.name === "body" ? 0 : 1) - (b.node.name === "body" ? 0 : 1));
@@ -784,8 +842,10 @@ export async function getAvatarFrames(
         if (i === 0 && part.slot === "head") {
           headTopY = headTopY == null ? pos[1] : Math.min(headTopY, pos[1]);
         }
+        const imageRel = canvasImageRel(part, partFrameIndex, { node, rel: crel });
+        if (!imageRel) return;
         layers.push({
-          path: `${part.imgKey}/${crel}`,
+          path: `${part.imgKey}/${imageRel}`,
           x: pos[0],
           y: pos[1],
           z: zIndex(node),
