@@ -29,7 +29,8 @@ function loadLayerImage(path: string): Promise<HTMLImageElement | null> {
     cached = (async () => {
       try {
         const result = await getImage(path);
-        if (!result) return null;
+        // 紙娃娃圖層必須是單張貼圖；缺少索引時的整頁預覽不能拿來合成角色。
+        if (!result || result.mode !== "exact") return null;
         return await decodeImage(`data:image/png;base64,${result.base64}`);
       } catch {
         return null;
