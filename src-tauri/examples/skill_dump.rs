@@ -244,6 +244,7 @@ fn as_i64(v: &Value) -> Option<i64> {
         Value::U8(n) => Some(i64::from(*n)),
         Value::U16(n) => Some(i64::from(*n)),
         Value::Int(n) => Some(i64::from(*n)),
+        Value::Long(n) => Some(*n),
         Value::Double(f) => Some(*f as i64),
         _ => None,
     }

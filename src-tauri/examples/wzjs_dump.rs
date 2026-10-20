@@ -100,6 +100,7 @@ fn collect_stats(
         msclassic::wzjs::Value::U8(_) => "U8",
         msclassic::wzjs::Value::U16(_) => "U16",
         msclassic::wzjs::Value::Int(_) => "Int",
+        msclassic::wzjs::Value::Long(_) => "Long",
         msclassic::wzjs::Value::Float2(_, _) => "Float2",
         msclassic::wzjs::Value::Int2(_, _) => "Int2",
         msclassic::wzjs::Value::Double(_) => "Double",

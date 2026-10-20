@@ -221,6 +221,7 @@ fn flatten_wzjs(prefix: &str, node: &WzNode, out: &mut Vec<(String, String)>) {
         Value::U8(v) => format!("INT {v}"),
         Value::U16(v) => format!("INT {v}"),
         Value::Int(v) => format!("INT {v}"),
+        Value::Long(v) => format!("LONG {v}"),
         Value::Float2(a, b) => format!("FLOAT2 ({a},{b})"),
         Value::Int2(a, b) => format!("INT2 ({a},{b})"),
         Value::Double(v) => format!("DOUBLE {v}"),
