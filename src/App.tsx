@@ -45,6 +45,8 @@ import { version as APP_VERSION } from "../package.json";
 
 const MIN_TREE_WIDTH = 240;
 const DEFAULT_TREE_WIDTH = 380;
+const AVATAR_BGM_ON_KEY = "msclassic.avatarBgm.on";
+const AVATAR_BGM_VOLUME_KEY = "msclassic.avatarBgm.volume";
 
 // 資料來源切換（hosted 版限定）：true 時 header 顯示「雲端資料 / 本機資料夾」切換器。
 const CAN_SWITCH_DATA_SOURCE = supportsDataSourceSwitch();
@@ -54,6 +56,17 @@ const CLOUD_SOURCE_LABEL = "雲端資料";
 function initialTreeWidth(): number {
   const saved = Number(window.localStorage.getItem("msclassic.treePaneWidth"));
   return Number.isFinite(saved) && saved >= MIN_TREE_WIDTH ? saved : DEFAULT_TREE_WIDTH;
+}
+
+function initialAvatarBgmOn(): boolean {
+  return window.localStorage.getItem(AVATAR_BGM_ON_KEY) !== "0";
+}
+
+function initialAvatarBgmVolume(): number {
+  const saved = window.localStorage.getItem(AVATAR_BGM_VOLUME_KEY);
+  if (saved === null) return 0.5;
+  const volume = Number(saved);
+  return Number.isFinite(volume) && volume >= 0 && volume <= 1 ? volume : 0.5;
 }
 
 function findLoadedEntry(childrenMap: Map<string, ChildEntry[]>, path: string): ChildEntry | null {
@@ -125,10 +138,9 @@ export default function App() {
   const [soundActivated, setSoundActivated] = useState(false);
   // 紙娃娃商店的「點裝」開關：ON 時只列 cash 裝備（App 持有，切 view 不重置）。
   const [cashOnly, setCashOnly] = useState(false);
-  // 紙娃娃 BGM：切到紙娃娃 tab 時循環播放 Sound/BgmUI/ShopBgm；false 表示使用者手動暫停。
-  const [bgmOn, setBgmOn] = useState(true);
-  // 紙娃娃 BGM 音量（0～1），拉桿即時調整，不需重播音訊。
-  const [bgmVolume, setBgmVolume] = useState(0.5);
+  // 紙娃娃 BGM：記住上次播放／暫停及音量；首次開啟維持原本的播放、50% 音量。
+  const [bgmOn, setBgmOn] = useState(initialAvatarBgmOn);
+  const [bgmVolume, setBgmVolume] = useState(initialAvatarBgmVolume);
   const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
   const bgmUrlRef = useRef<string | null>(null);
   const bgmVolumeRef = useRef(bgmVolume);
@@ -199,11 +211,16 @@ export default function App() {
     };
   }, [view, bgmOn]);
 
+  useEffect(() => {
+    window.localStorage.setItem(AVATAR_BGM_ON_KEY, bgmOn ? "1" : "0");
+  }, [bgmOn]);
+
   // 音量拉桿即時套用到已建立的 <audio>；元素尚未建立時只更新 ref，建立時再讀取。
   useEffect(() => {
     bgmVolumeRef.current = bgmVolume;
     const audio = bgmAudioRef.current;
     if (audio) audio.volume = bgmVolume;
+    window.localStorage.setItem(AVATAR_BGM_VOLUME_KEY, String(bgmVolume));
   }, [bgmVolume]);
 
   const loadDataDirectory = useCallback(async (path: string) => {
