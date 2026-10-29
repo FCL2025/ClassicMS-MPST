@@ -59,7 +59,7 @@ function fillMissingFrameImages(frames: AvatarFrame[], images: Map<string, HTMLI
           .filter((candidate) => candidate >= 0 && candidate < frames.length)
           .flatMap((candidate) => frames[candidate].layers)
           .filter((candidate) => layerKey(candidate.path) === key && exact.has(candidate.path));
-        const donor = candidates.find((candidate) => candidate.z === layer.z) ?? candidates[0];
+        const donor = candidates.find((candidate) => candidate.z === layer.z);
         if (donor) {
           images.set(layer.path, exact.get(donor.path)!);
           break;

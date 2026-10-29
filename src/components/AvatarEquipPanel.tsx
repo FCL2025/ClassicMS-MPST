@@ -4,6 +4,8 @@ import type { EquipSlot, PartsState } from "./AvatarPage";
 import { loadAvatarIcon, SLOT_TABS } from "./AvatarShop";
 import { COLOR_LABELS, FACE_COLOR_LABELS } from "./avatarColor";
 
+const HAIR_COLORS = [0, 1, 2, 3, 4, 5, 6, 7];
+
 function AvatarEquipRow({
   slot,
   part,
@@ -66,8 +68,39 @@ function AvatarEquipRow({
   );
 }
 
-// 顏色下拉：支援滑鼠滾輪直接換色（不用先點開）。
-// React 的 onWheel 是 passive listener，無法 preventDefault，所以改綁原生 wheel 事件。
+// 紙娃娃下拉選單用滾輪切換；原生 listener 才能阻止頁面跟著捲動。
+function useWheelSelect<T extends string | number>(
+  options: readonly T[],
+  value: T,
+  onChange: (next: T) => void,
+) {
+  const selectRef = useRef<HTMLSelectElement>(null);
+  const currentValue = useRef(value);
+  const changeRef = useRef(onChange);
+  currentValue.current = value;
+  changeRef.current = onChange;
+
+  useEffect(() => {
+    const select = selectRef.current;
+    if (!select) return;
+    const onWheel = (event: WheelEvent) => {
+      if (event.deltaY === 0) return;
+      event.preventDefault();
+      const index = options.indexOf(currentValue.current);
+      const step = event.deltaY > 0 ? 1 : -1;
+      const next = options[Math.min(options.length - 1, Math.max(0, index + step))];
+      if (next !== undefined && next !== currentValue.current) {
+        currentValue.current = next;
+        changeRef.current(next);
+      }
+    };
+    select.addEventListener("wheel", onWheel, { passive: false });
+    return () => select.removeEventListener("wheel", onWheel);
+  }, [options]);
+
+  return selectRef;
+}
+
 function ColorSelect({
   id,
   label,
@@ -84,21 +117,7 @@ function ColorSelect({
   labels: readonly string[];
   onChange: (color: number) => void;
 }) {
-  const selectRef = useRef<HTMLSelectElement>(null);
-
-  useEffect(() => {
-    const select = selectRef.current;
-    if (!select) return;
-    const onWheel = (event: WheelEvent) => {
-      event.preventDefault();
-      const index = options.indexOf(value);
-      const step = event.deltaY > 0 ? 1 : -1;
-      const next = options[Math.min(options.length - 1, Math.max(0, index + step))];
-      if (next !== undefined && next !== value) onChange(next);
-    };
-    select.addEventListener("wheel", onWheel, { passive: false });
-    return () => select.removeEventListener("wheel", onWheel);
-  }, [options, value, onChange]);
+  const selectRef = useWheelSelect(options, value, onChange);
 
   // 選取的顏色不在可選清單時（例如換了沒有白色的臉型），顯示退回第一個選項。
   const displayValue = options.includes(value) ? value : options[0];
@@ -176,6 +195,13 @@ export function AvatarEquipPanel({
   onRemove,
 }: AvatarEquipPanelProps) {
   const equipById = useMemo(() => new Map(equipment.map((item) => [item.id, item])), [equipment]);
+  const skinIds = useMemo(() => skins.map((candidate) => candidate.bodyId), [skins]);
+  const skinRef = useWheelSelect(skinIds, skin.bodyId, (bodyId) => {
+    const next = skins.find((candidate) => candidate.bodyId === bodyId);
+    if (next) onSkinChange(next);
+  });
+  const emotionRef = useWheelSelect(emotions, emotion, onEmotionChange);
+  const actionRef = useWheelSelect(actions, action, onActionChange);
   // 已穿部位（含 hair/face），依 SLOT_TABS 順序顯示。
   const wornSlots = SLOT_TABS.map(({ slot }) => slot).filter((slot) => parts[slot]);
 
@@ -184,6 +210,7 @@ export function AvatarEquipPanel({
       <div className="avatar-control-row">
         <label htmlFor="avatar-skin-select">膚色</label>
         <select
+          ref={skinRef}
           id="avatar-skin-select"
           value={skin.bodyId}
           onChange={(event) => {
@@ -203,6 +230,7 @@ export function AvatarEquipPanel({
       <div className="avatar-control-row">
         <label htmlFor="avatar-emotion-select">表情</label>
         <select
+          ref={emotionRef}
           id="avatar-emotion-select"
           value={emotion}
           onChange={(event) => onEmotionChange(event.target.value)}
@@ -219,6 +247,7 @@ export function AvatarEquipPanel({
         <label htmlFor="avatar-action-select">動作</label>
         <div className="avatar-action-row">
           <select
+            ref={actionRef}
             id="avatar-action-select"
             value={action}
             onChange={(event) => onActionChange(event.target.value)}
@@ -256,7 +285,7 @@ export function AvatarEquipPanel({
             id="avatar-hair-color-select"
             label="髮型顏色"
             value={hairColor}
-            options={[0, 1, 2, 3, 4, 5, 6, 7]}
+            options={HAIR_COLORS}
             labels={COLOR_LABELS}
             onChange={(color) => onColorChange("hair", color)}
           />

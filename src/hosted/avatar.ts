@@ -515,39 +515,67 @@ function collectExactCanvases(root: TreeNode): CollectedCanvas[] {
   return out;
 }
 
-/** 動作幀沒有單圖索引時，沿用同部位、同圖層最近幀的貼圖；位置仍由當前幀計算。 */
-function canvasImageRel(part: ResolvedPart, frameIndex: number, canvas: CollectedCanvas): string | null {
-  if (canvas.node.canvas) return canvas.rel;
-  // 本體和表情不能拿其他幀代替，否則會改變動作或表情。
-  if (part.slot === "body" || part.slot === "head" || part.slot === "face") return null;
+/** 動作幀沒有單圖索引時，找圖層與原點都相近的圖片。 */
+function canvasImage(part: ResolvedPart, frameIndex: number, canvas: CollectedCanvas): CollectedCanvas | null {
+  if (canvas.node.canvas) return canvas;
+  // 表情不能借其他幀，否則會變成錯誤表情。身體缺圖時仍須保留當幀的錨點與位置。
+  if (part.slot === "face") return null;
+  const targetOrigin = vectorProp(canvas.node, "origin") ?? [0, 0];
   const sameLayer = ({ node }: CollectedCanvas) =>
-    node.canvas && node.name === canvas.node.name && zStr(node) === zStr(canvas.node);
+    node.canvas && node.name === canvas.node.name && zIndex(node) === zIndex(canvas.node);
+  const nearOrigin = ({ node }: CollectedCanvas) => {
+    const origin = vectorProp(node, "origin") ?? [0, 0];
+    return (targetOrigin[0] - origin[0]) ** 2 + (targetOrigin[1] - origin[1]) ** 2 <= 12 ** 2;
+  };
   for (let distance = 1; distance < part.canvases.length; distance += 1) {
     for (const candidate of [frameIndex - distance, frameIndex + distance]) {
-      const match = part.canvases[candidate]?.find(sameLayer);
-      if (match) return match.rel;
+      const match = part.canvases[candidate]?.find((source) => sameLayer(source) && nearOrigin(source));
+      if (match) return match;
     }
   }
-  // 整個動作都沒有該圖層時，找同一裝備其他動作中姿勢最接近的貼圖。
+  // 本體及頭部只借同一動作的幀，避免把不同姿勢的身體拼在一起。
+  if (part.slot === "body" || part.slot === "head") return null;
+  // 整個動作都沒有該圖層時，只借同圖層且原點接近的貼圖。
+  // 不同 z 或差距過大的貼圖往往是完全不同的武器姿勢／特效。
   const targetAction = part.frames[frameIndex].replace(/\/[^/]+$/, "");
-  const targetOrigin = vectorProp(canvas.node, "origin") ?? [0, 0];
-  const sameZ = part.sourceCanvases.filter(sameLayer);
-  const sources = sameZ.length > 0 ? sameZ : part.sourceCanvases.filter(
-    ({ node }) => node.name === canvas.node.name,
-  );
-  let best: { rel: string; prefix: number; distance: number } | null = null;
-  for (const source of sources) {
+  let best: { canvas: CollectedCanvas; prefix: number; distance: number } | null = null;
+  for (const source of part.sourceCanvases.filter(sameLayer)) {
     const sourceFrame = source.rel.replace(/\/[^/]+$/, "");
     let prefix = 0;
     while (prefix < targetAction.length && targetAction[prefix] === sourceFrame[prefix]) prefix += 1;
     const sourceOrigin = vectorProp(source.node, "origin") ?? [0, 0];
     const distance = (targetOrigin[0] - sourceOrigin[0]) ** 2 +
       (targetOrigin[1] - sourceOrigin[1]) ** 2;
-    if (!best || prefix > best.prefix || (prefix === best.prefix && distance < best.distance)) {
-      best = { rel: source.rel, prefix, distance };
+    if (distance > 12 ** 2) continue;
+    if (!best || distance < best.distance || (distance === best.distance && prefix > best.prefix)) {
+      best = { canvas: source, prefix, distance };
     }
   }
-  return best?.rel ?? null;
+  return best?.canvas ?? null;
+}
+
+/** 借圖時按兩張 canvas 共同的骨骼錨點對齊實際像素。 */
+function borrowedImagePosition(
+  pos: [number, number],
+  target: TreeNode,
+  source: TreeNode,
+): [number, number] {
+  if (target === source) return pos;
+  const targetOrigin = vectorProp(target, "origin") ?? [0, 0];
+  const sourceOrigin = vectorProp(source, "origin") ?? [0, 0];
+  const targetMap = childOf(target, "map");
+  const sourceMap = childOf(source, "map");
+  for (const name of ["hand", "neck", "brow", "navel"]) {
+    const targetPoint = targetMap?.children?.find((node) => node.name === name);
+    const sourcePoint = sourceMap?.children?.find((node) => node.name === name);
+    if (targetPoint?.value.type === "Vector" && sourcePoint?.value.type === "Vector") {
+      return [
+        pos[0] + targetOrigin[0] + targetPoint.value.value[0] - sourceOrigin[0] - sourcePoint.value.value[0],
+        pos[1] + targetOrigin[1] + targetPoint.value.value[1] - sourceOrigin[1] - sourcePoint.value.value[1],
+      ];
+    }
+  }
+  return [pos[0] + targetOrigin[0] - sourceOrigin[0], pos[1] + targetOrigin[1] - sourceOrigin[1]];
 }
 
 type Anchors = Map<string, [number, number]>;
@@ -842,12 +870,13 @@ export async function getAvatarFrames(
         if (i === 0 && part.slot === "head") {
           headTopY = headTopY == null ? pos[1] : Math.min(headTopY, pos[1]);
         }
-        const imageRel = canvasImageRel(part, partFrameIndex, { node, rel: crel });
-        if (!imageRel) return;
+        const image = canvasImage(part, partFrameIndex, { node, rel: crel });
+        if (!image) return;
+        const imagePos = borrowedImagePosition(pos, node, image.node);
         layers.push({
-          path: `${part.imgKey}/${imageRel}`,
-          x: pos[0],
-          y: pos[1],
+          path: `${part.imgKey}/${image.rel}`,
+          x: imagePos[0],
+          y: imagePos[1],
           z: zIndex(node),
         });
       });
