@@ -16,7 +16,7 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 #[cfg(not(target_arch = "wasm32"))]
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -474,11 +474,43 @@ fn normalize_container_path(path: &str) -> Option<String> {
     None
 }
 
+/// 掃描索引鍵，找出資料集內出現的語系代碼（`String/<CODE>/…` 的 `<CODE>`）。
+/// 回傳偏好順序（TW→CN→JP→KR→其餘字母序）；都沒有時退回 `["TW"]`。
+fn detect_locales(catalog: &Catalog) -> Vec<String> {
+    use std::collections::BTreeSet;
+    let mut found: BTreeSet<String> = BTreeSet::new();
+    for key in catalog.entries.keys() {
+        if let Some(rest) = key.strip_prefix("String/") {
+            if let Some(code) = rest.split('/').next() {
+                if !code.is_empty() {
+                    found.insert(code.to_string());
+                }
+            }
+        }
+    }
+    const PREFERRED: [&str; 4] = ["TW", "CN", "JP", "KR"];
+    let mut ordered: Vec<String> = Vec::new();
+    for code in PREFERRED {
+        if found.remove(code) {
+            ordered.push(code.to_string());
+        }
+    }
+    ordered.extend(found);
+    if ordered.is_empty() {
+        ordered.push("TW".to_string());
+    }
+    ordered
+}
+
 // ── DataService（開啟狀態 + 懶解碼）─────────────────────────────
 
 pub struct DataService {
     pub catalog: Catalog,
     pub(crate) bundles: Vec<Bundle>,
+    /// 資料集內偵測到的語系代碼（TW/CN/JP/KR…），偏好順序在前。
+    pub locales: Vec<String>,
+    /// 目前作用中的語系代碼（字串／Etc 資產路徑的第二段）。可於執行期切換。
+    locale: RwLock<String>,
     tree_cache: Mutex<TreeCache>,
     image_cache: Mutex<ImageCache>,
     pub(crate) tooltip_name_cache: crate::item_tooltip::TooltipNameCache,
@@ -514,6 +546,10 @@ pub struct OpenInfo {
     pub elapsed_ms: u128,
     pub entry_count: usize,
     pub bundle_count: usize,
+    /// 目前作用中的語系代碼。
+    pub locale: String,
+    /// 資料集內偵測到的所有語系代碼（偏好順序；長度 > 1 時前端顯示切換器）。
+    pub locales: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -572,15 +608,20 @@ impl DataService {
                 &catalog.root.join(format!("{}.bundle", meta.name)),
             )?);
         }
+        let locales = detect_locales(&catalog);
         let info = OpenInfo {
             from_cache,
             elapsed_ms: t0.elapsed().as_millis(),
             entry_count: catalog.entries.len(),
             bundle_count: catalog.bundles.len(),
+            locale: locales[0].clone(),
+            locales: locales.clone(),
         };
         let service = DataService {
             catalog,
             bundles,
+            locale: RwLock::new(locales[0].clone()),
+            locales,
             tree_cache: Mutex::new(TreeCache::default()),
             image_cache: Mutex::new(ImageCache::default()),
             tooltip_name_cache: Default::default(),
@@ -618,15 +659,20 @@ impl DataService {
                 i as u32, meta.size,
             )))?);
         }
+        let locales = detect_locales(&catalog);
         let info = OpenInfo {
             from_cache,
             elapsed_ms: t0.elapsed().as_millis(),
             entry_count: catalog.entries.len(),
             bundle_count: catalog.bundles.len(),
+            locale: locales[0].clone(),
+            locales: locales.clone(),
         };
         let service = DataService {
             catalog,
             bundles,
+            locale: RwLock::new(locales[0].clone()),
+            locales,
             tree_cache: Mutex::new(TreeCache::default()),
             image_cache: Mutex::new(ImageCache::default()),
             tooltip_name_cache: Default::default(),
@@ -643,6 +689,59 @@ impl DataService {
         };
         service.validate_locations()?;
         Ok((service, info))
+    }
+
+    /// 目前作用中的語系代碼（RwLock 中毒時仍取回內容，不 panic）。
+    pub fn locale(&self) -> String {
+        self.locale
+            .read()
+            .map(|guard| guard.clone())
+            .unwrap_or_else(|poisoned| poisoned.into_inner().clone())
+    }
+
+    /// 以目前語系組出字串表路徑，如 `String/TW/Item`。
+    pub(crate) fn string_path(&self, leaf: &str) -> String {
+        format!("String/{}/{leaf}", self.locale())
+    }
+
+    /// 以目前語系組出 Etc 資產路徑，如 `Etc/TW/Commodity`。
+    pub(crate) fn etc_path(&self, leaf: &str) -> String {
+        format!("Etc/{}/{leaf}", self.locale())
+    }
+
+    /// 切換作用中的語系；代碼不在偵測清單內則回錯誤。
+    /// 切換成功後清掉所有與語系相關的字串／名稱快取，下次讀取改用新語系。
+    pub fn set_locale(&self, code: &str) -> Result<()> {
+        if !self.locales.iter().any(|locale| locale == code) {
+            return Err(CatalogError::PathNotFound(format!("未知語系代碼: {code}")));
+        }
+        {
+            let mut guard = self
+                .locale
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if *guard == code {
+                return Ok(());
+            }
+            *guard = code.to_string();
+        }
+        self.clear_locale_caches();
+        Ok(())
+    }
+
+    /// 清掉所有依語系而定的懶載入快取（切換語系時呼叫）。
+    fn clear_locale_caches(&self) {
+        self.tooltip_name_cache.reset();
+        self.commodity_name_cache.reset();
+        self.search_index_cache.reset();
+        self.monster_book_cache.reset();
+        self.monster_name_cache.reset();
+        self.skill_book_cache.reset();
+        self.skill_string_cache.reset();
+        self.quest_book_cache.reset();
+        self.quest_data_cache.reset();
+        self.quest_name_cache.reset();
+        self.map_bgm_cache.reset();
     }
 
     /// 列出 path 的直接子節點（"" = 頂層目錄）。

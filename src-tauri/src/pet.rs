@@ -52,7 +52,7 @@ pub struct PetEquipInfo {
 
 /// 寵物清單：`Item/Pet` 目錄掃描 + `String/TW/Pet` 名稱表。
 pub fn pet_list(svc: &DataService) -> Result<Vec<PetInfo>> {
-    let names = crate::commodity::load_names(svc, "String/TW/Pet");
+    let names = crate::commodity::load_names(svc, &svc.string_path("Pet"));
     let mut pets = Vec::new();
     for child in svc.list_children("Item/Pet")? {
         let ChildEntry::Img { name: id, .. } = child else {

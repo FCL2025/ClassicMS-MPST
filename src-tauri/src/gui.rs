@@ -141,6 +141,8 @@ fn open_info_for(service: &DataService) -> OpenInfo {
         elapsed_ms: 0,
         entry_count: service.catalog.entries.len(),
         bundle_count: service.catalog.bundles.len(),
+        locale: service.locale(),
+        locales: service.locales.clone(),
     }
 }
 
@@ -550,6 +552,17 @@ async fn export_file(
     .await
 }
 
+/// 切換作用中的語系代碼（資料集含多個語系時，前端下拉選單用）。
+#[tauri::command]
+async fn set_region(code: String, state: State<'_, AppState>) -> Result<(), String> {
+    let state = state.inner().clone();
+    blocking(move || {
+        let (service, _) = state.current_or_open(None)?;
+        service.set_locale(&code).map_err(|error| error.to_string())
+    })
+    .await
+}
+
 #[tauri::command]
 fn initial_path() -> Option<String> {
     std::env::var("MSCLASSIC_INITIAL_PATH")
@@ -624,6 +637,7 @@ pub fn run() {
             get_quest_detail,
             get_map_bgm_index,
             search_nodes,
+            set_region,
             export_subtree,
             export_file,
             initial_path,

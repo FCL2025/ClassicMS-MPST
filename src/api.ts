@@ -14,6 +14,10 @@ export interface OpenInfo {
   elapsed_ms: number;
   entry_count: number;
   bundle_count: number;
+  /** 目前作用中的語系代碼。 */
+  locale: string;
+  /** 資料集內偵測到的所有語系代碼（偏好順序；長度 > 1 時顯示切換器）。 */
+  locales: string[];
 }
 
 export interface OpenResult {
@@ -405,6 +409,8 @@ export interface SearchHit {
 
 export const searchNodes = (query: string, scope?: string | null, limit = 200) =>
   invoke<SearchHit[]>("search_nodes", { query, scope: scope ?? null, limit });
+/** 切換作用中的語系代碼（資料集含多個語系時用）。 */
+export const setRegion = (code: string) => invoke<void>("set_region", { code });
 export const exportSubtree = (path: string) => invoke<ExportStats>("export_subtree", { path });
 export const exportFile = (path: string, format: ExportFormat, outputPath: string) =>
   invoke<FileExportResult>("export_file", { path, format, outputPath });

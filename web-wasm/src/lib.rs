@@ -132,6 +132,20 @@ pub fn get_node(path: &str) -> Result<JsValue, JsValue> {
     with_service(|s| s.get_node(path).map_err(|e| e.to_string())).and_then(|v| to_js(&v))
 }
 
+/// 切換作用中的語系代碼；語意對齊 gui.rs 的 set_region。
+#[wasm_bindgen]
+pub fn set_region(code: &str) -> Result<(), JsValue> {
+    SERVICE
+        .with(|cell| {
+            let borrow = cell.borrow();
+            let service = borrow
+                .as_ref()
+                .ok_or_else(|| "尚未開啟資料集，請先呼叫 open".to_string())?;
+            service.set_locale(code).map_err(|e| e.to_string())
+        })
+        .map_err(js_err)
+}
+
 #[wasm_bindgen]
 pub fn search_nodes(
     query: &str,

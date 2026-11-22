@@ -48,6 +48,16 @@ pub(crate) type ItemNameTable = HashMap<u32, (String, Option<String>)>;
 #[derive(Default)]
 pub(crate) struct TooltipNameCache(Mutex<Option<Arc<ItemNameTable>>>);
 
+impl TooltipNameCache {
+    /// 清掉快取（切換語系時呼叫）。
+    pub(crate) fn reset(&self) {
+        *self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TooltipStatLine {
@@ -271,7 +281,7 @@ impl DataService {
 
     fn load_item_names(&self) -> Result<ItemNameTable> {
         let mut table = ItemNameTable::new();
-        let Ok(node) = self.get_node("String/TW/Item") else {
+        let Ok(node) = self.get_node(&self.string_path("Item")) else {
             return Ok(table);
         };
         let Some(text) = node.text_asset else {

@@ -3,8 +3,10 @@
 // 載入失敗（無遊戲資料、web 版尚未載入資料集等）回傳 null，呼叫端用備援樣式。
 
 import { getImage } from "../api";
+import { getActiveLocale, onLocaleChange } from "../locale";
 
-const FRAME_PATH = "TW/UI/UIWindow/Quest/backgrnd";
+// UI 素材的語系目錄隨資料集而定（TW/CN/JP/KR…），路徑在載入時才組出。
+const framePath = () => `${getActiveLocale()}/UI/UIWindow/Quest/backgrnd`;
 
 // 來源圖 245x396：標題列 y0..17（左上角有內建「任務」二字，取右側乾淨漸層）、
 // 內容白底（左右邊框各約 7px）、底部鋼藍橫條 y369..396。
@@ -18,8 +20,11 @@ const FOOTER_H = 27;
 const STRIP_X = 150; // 乾淨（無文字）的中段取樣起點
 const STRIP_W = 30;
 
-// 載入結果快取（整個 session 只需組一次）；null 表示取得失敗。
+// 載入結果快取（同一語系只需組一次）；null 表示取得失敗。切換語系時作廢。
 let cached: string | null | undefined;
+onLocaleChange(() => {
+  cached = undefined;
+});
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -33,7 +38,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 export async function loadClassicFrame(): Promise<string | null> {
   if (cached !== undefined) return cached;
   try {
-    const result = await getImage(FRAME_PATH);
+    const result = await getImage(framePath());
     if (!result) return (cached = null);
     const img = await loadImage(`data:image/png;base64,${result.base64}`);
 

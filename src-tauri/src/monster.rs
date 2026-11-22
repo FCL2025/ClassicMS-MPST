@@ -16,9 +16,29 @@ use crate::wzjs::{Value, WzNode};
 #[derive(Default)]
 pub(crate) struct MonsterBookCache(Mutex<Option<Arc<Vec<MonsterSummary>>>>);
 
+impl MonsterBookCache {
+    /// 清掉快取（切換語系時呼叫）。
+    pub(crate) fn reset(&self) {
+        *self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+    }
+}
+
 /// 圖鑑相關名稱表懶載入快取。
 #[derive(Default)]
 pub(crate) struct MonsterNameCache(Mutex<Option<Arc<MonsterNameTables>>>);
+
+impl MonsterNameCache {
+    /// 清掉快取（切換語系時呼叫）。
+    pub(crate) fn reset(&self) {
+        *self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+    }
+}
 
 /// 圖鑑用到的各種文字表。
 pub(crate) struct MonsterNameTables {
@@ -309,12 +329,12 @@ impl DataService {
         if let Some(tables) = guard.as_ref() {
             return Ok(tables.clone());
         }
-        let mut items = load_names(self, "String/TW/Item");
-        for (id, name) in load_names(self, "String/TW/Pet") {
+        let mut items = load_names(self, &self.string_path("Item"));
+        for (id, name) in load_names(self, &self.string_path("Pet")) {
             items.entry(id).or_insert(name);
         }
         let tables = Arc::new(MonsterNameTables {
-            mobs: load_names(self, "String/TW/Mob"),
+            mobs: load_names(self, &self.string_path("Mob")),
             book_texts: load_book_texts(self),
             maps: load_map_names(self),
             items,
@@ -394,7 +414,7 @@ fn strip_bom(text: &str) -> &str {
 /// 格式為 `等級：Lv.8\n型態：植物\n\n描述…`。
 fn load_book_texts(service: &DataService) -> HashMap<u32, BookText> {
     let mut table = HashMap::new();
-    let Ok(node) = service.get_node("String/TW/MonsterBook") else {
+    let Ok(node) = service.get_node(&service.string_path("MonsterBook")) else {
         return table;
     };
     let Some(text) = node.text_asset else {
@@ -443,7 +463,7 @@ fn parse_book_text(raw: &str) -> BookText {
 /// 解析 `String/TW/Map`（`{id: {streetName, mapName}}`）成 id →「地區 : 地圖名」。
 pub(crate) fn load_map_names(service: &DataService) -> HashMap<u32, String> {
     let mut table = HashMap::new();
-    let Ok(node) = service.get_node("String/TW/Map") else {
+    let Ok(node) = service.get_node(&service.string_path("Map")) else {
         return table;
     };
     let Some(text) = node.text_asset else {

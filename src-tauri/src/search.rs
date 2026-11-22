@@ -31,6 +31,16 @@ struct NameEntry {
 #[derive(Default)]
 pub(crate) struct SearchIndexCache(Mutex<Option<Arc<Vec<NameEntry>>>>);
 
+impl SearchIndexCache {
+    /// 清掉快取（切換語系時呼叫）。
+    pub(crate) fn reset(&self) {
+        *self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+    }
+}
+
 impl DataService {
     /// 子字串搜尋（不分大小寫）：名稱命中在前、img 路徑命中在後，最多 limit 筆。
     /// scope 非空時只回該節點子樹內（或包住該節點的 img）的結果。
@@ -101,8 +111,8 @@ impl DataService {
     }
 
     fn build_name_index(&self) -> Vec<NameEntry> {
-        let mut names = crate::commodity::load_names(self, "String/TW/Item");
-        for (id, name) in crate::commodity::load_names(self, "String/TW/Pet") {
+        let mut names = crate::commodity::load_names(self, &self.string_path("Item"));
+        for (id, name) in crate::commodity::load_names(self, &self.string_path("Pet")) {
             names.entry(id).or_insert(name);
         }
         let mut out: Vec<NameEntry> = names

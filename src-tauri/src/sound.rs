@@ -15,6 +15,16 @@ use crate::wzjs::Value;
 #[derive(Default)]
 pub(crate) struct MapBgmCache(pub Mutex<Option<Arc<Vec<BgmMapGroup>>>>);
 
+impl MapBgmCache {
+    /// 清掉快取（切換語系時呼叫）。
+    pub(crate) fn reset(&self) {
+        *self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+    }
+}
+
 /// 使用某首 BGM 的一張地圖。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

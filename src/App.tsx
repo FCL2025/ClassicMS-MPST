@@ -20,6 +20,7 @@ import {
   pickDataDirectory,
   reconnectDataDirectory,
   setDataSource,
+  setRegion,
   storedFolderLabel,
   supportsDataSourceSwitch,
   typeLabel,
@@ -41,6 +42,7 @@ import { NodeDetail } from "./components/NodeDetail";
 import { SearchBar } from "./components/SearchBar";
 import { TreeView } from "./components/TreeView";
 import { useTheme } from "./useTheme";
+import { setActiveLocale } from "./locale";
 import { version as APP_VERSION } from "../package.json";
 
 const MIN_TREE_WIDTH = 240;
@@ -109,6 +111,9 @@ export default function App() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<ChildEntry | null>(null);
   const [openInfo, setOpenInfo] = useState<OpenInfo | null>(null);
+  // 作用中語系代碼與遞增鍵：資料集含多個語系時，切換語系要讓各檢視重新載入。
+  const [activeRegion, setActiveRegion] = useState("TW");
+  const [localeNonce, setLocaleNonce] = useState(0);
   // 資料來源（hosted 版才有切換器；偏好存 localStorage，預設本機資料夾）。
   const [dataSource, setDataSourceState] = useState<DataSource>(() => getDataSource());
   const [, setDataDir] = useState<string | null>(null);
@@ -241,6 +246,9 @@ export default function App() {
       setExpanded(new Set());
       setSelected(null);
       setOpenInfo(result.info);
+      setActiveRegion(result.info.locale);
+      setActiveLocale(result.info.locale);
+      setLocaleNonce((nonce) => nonce + 1);
       setDataDir(result.data_dir);
       setStatus(statusFor(result));
     } catch (error) {
@@ -312,6 +320,23 @@ export default function App() {
       setStatus(`切換本機資料夾失敗：${message}`);
     }
   }, [dataSource, loadingData, loadDataDirectory]);
+
+  // 語系切換（資料集含多個語系時）：切後端作用語系 → 更新前端共用語系 →
+  // 遞增 localeNonce 讓資料檢視重新掛載、以新語系重載名稱／字串。
+  const changeRegion = useCallback(
+    async (code: string) => {
+      if (code === activeRegion) return;
+      try {
+        await setRegion(code);
+        setActiveRegion(code);
+        setActiveLocale(code);
+        setLocaleNonce((nonce) => nonce + 1);
+      } catch (error) {
+        setStatus(`切換語系失敗：${String(error)}`);
+      }
+    },
+    [activeRegion],
+  );
 
   const childrenOf = useCallback((path: string) => childrenMap.get(path), [childrenMap]);
 
@@ -707,6 +732,23 @@ export default function App() {
             {loadingData ? "載入中…" : openInfo ? "更換資料夾" : "選擇資料夾"}
           </button>
         )}
+        {openInfo && openInfo.locales.length > 1 ? (
+          <label className="region-select" title="資料語系">
+            <span className="region-select-label">語系</span>
+            <select
+              value={activeRegion}
+              disabled={loadingData}
+              onChange={(event) => void changeRegion(event.target.value)}
+              aria-label="資料語系"
+            >
+              {openInfo.locales.map((code) => (
+                <option key={code} value={code}>
+                  {code}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <button
           className="icon-button"
           type="button"
@@ -745,6 +787,7 @@ export default function App() {
 
       {openInfo ? (
         <div
+          key={localeNonce}
           className={`app-body${view === "avatar" ? " is-avatar" : ""}${view === "pet" ? " is-pet" : ""}${view === "monster" ? " is-monster" : ""}${view === "skill" ? " is-skill" : ""}${view === "quest" ? " is-quest" : ""}${view === "sound" ? " is-sound" : ""}`}
           style={workspaceStyle}
         >

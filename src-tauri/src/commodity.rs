@@ -15,6 +15,16 @@ use crate::catalog::{DataService, Result};
 #[derive(Default)]
 pub(crate) struct CommodityNameCache(Mutex<Option<Arc<NameTables>>>);
 
+impl CommodityNameCache {
+    /// 清掉快取（切換語系時呼叫）。
+    pub(crate) fn reset(&self) {
+        *self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+    }
+}
+
 /// 道具 id → 名稱；寵物名稱在獨立的 `String/TW/Pet` 表。
 struct NameTables {
     items: HashMap<u32, String>,
@@ -39,7 +49,7 @@ impl DataService {
     /// 商城商品清單：解析 `Etc/TW/Commodity`，依 SN 排序並補齊名稱與 icon。
     /// 資料集沒有此資產時回傳空清單。
     pub fn get_commodity_items(&self) -> Result<Vec<CommodityItem>> {
-        let Ok(node) = self.get_node("Etc/TW/Commodity") else {
+        let Ok(node) = self.get_node(&self.etc_path("Commodity")) else {
             return Ok(Vec::new());
         };
         let Some(text) = node.text_asset else {
@@ -114,8 +124,8 @@ impl DataService {
             return Ok(tables.clone());
         }
         let tables = Arc::new(NameTables {
-            items: load_names(self, "String/TW/Item"),
-            pets: load_names(self, "String/TW/Pet"),
+            items: load_names(self, &self.string_path("Item")),
+            pets: load_names(self, &self.string_path("Pet")),
         });
         *guard = Some(tables.clone());
         Ok(tables)

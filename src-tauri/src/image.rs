@@ -77,8 +77,22 @@ pub struct ImageIndex {
     pub set_assets: BTreeMap<String, BTreeMap<String, SetSpriteEntry>>,
 }
 
-const SHEET_PREFIX: &str = "assets/wzassets/spritesheet/tw/";
+/// spritesheet 的 container 前綴；其後緊接一段語系目錄（tw/cn/jp/kr…），
+/// 以 [`strip_sheet_prefix`] 一併剝掉，索引鍵因此與語系無關。
+const SHEET_PREFIX: &str = "assets/wzassets/spritesheet/";
 const SET_PREFIX: &str = "assets/wzassets/spriteset/";
+
+/// 去掉 `assets/wzassets/spritesheet/<locale>/` 前綴（語系目錄佔一段），
+/// 回傳其後的路徑；不符前綴或缺語系段時回 None。
+fn strip_sheet_prefix(path: &str) -> Option<&str> {
+    let lower = path.to_lowercase();
+    if !lower.starts_with(SHEET_PREFIX) {
+        return None;
+    }
+    let after = &path[SHEET_PREFIX.len()..];
+    let slash = after.find('/')?;
+    Some(&after[slash + 1..])
+}
 
 pub(crate) struct SerializedImageContext<'a> {
     pub bundle: &'a Bundle,
@@ -139,11 +153,9 @@ impl ImageIndex {
         loc_of: &dyn Fn(i64) -> Option<EntryLocation>,
     ) -> Result<()> {
         for e in container {
-            let lower = e.path.to_lowercase();
-            if !lower.starts_with(SHEET_PREFIX) {
+            let Some(rest) = strip_sheet_prefix(&e.path) else {
                 continue;
-            }
-            let rest = &e.path[SHEET_PREFIX.len()..];
+            };
             if let Some((key, is_asset)) = rest
                 .strip_suffix(".wzspritesheet")
                 .map(|key| (key, false))
@@ -555,7 +567,7 @@ mod tests {
     fn test_sheet_collection_does_not_depend_on_container_order() {
         let container = vec![
             objects::ContainerEntry {
-                path: format!("{SHEET_PREFIX}login_0.png"),
+                path: format!("{SHEET_PREFIX}tw/login_0.png"),
                 preload_index: 0,
                 preload_size: 0,
                 asset: objects::PPtr {
@@ -564,7 +576,7 @@ mod tests {
                 },
             },
             objects::ContainerEntry {
-                path: format!("{SHEET_PREFIX}login.wzspritesheet"),
+                path: format!("{SHEET_PREFIX}tw/login.wzspritesheet"),
                 preload_index: 0,
                 preload_size: 0,
                 asset: objects::PPtr {
@@ -573,7 +585,7 @@ mod tests {
                 },
             },
             objects::ContainerEntry {
-                path: format!("{SHEET_PREFIX}Character/00002000_0.png"),
+                path: format!("{SHEET_PREFIX}tw/Character/00002000_0.png"),
                 preload_index: 0,
                 preload_size: 0,
                 asset: objects::PPtr {
@@ -582,7 +594,7 @@ mod tests {
                 },
             },
             objects::ContainerEntry {
-                path: format!("{SHEET_PREFIX}Character/00002000.asset"),
+                path: format!("{SHEET_PREFIX}tw/Character/00002000.asset"),
                 preload_index: 0,
                 preload_size: 0,
                 asset: objects::PPtr {

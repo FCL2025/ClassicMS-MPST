@@ -19,6 +19,7 @@ import {
 import { ImagePreview } from "./ImagePreview";
 import { ItemTooltip } from "./ItemTooltip";
 import { CommodityShop } from "./CommodityShop";
+import { getActiveLocale, onLocaleChange } from "../locale";
 
 interface NodeDetailProps {
   path: string | null;
@@ -38,12 +39,16 @@ type SkillStringTable = Record<
   { Name?: string; Desc?: string; LevelDesc?: Record<string, string> }
 >;
 
-// String/TW/Skill 是大型 TextAsset JSON（技能 id → {Name, Desc, ...}），解析一次後整個 session 共用。
+// String/<locale>/Skill 是大型 TextAsset JSON（技能 id → {Name, Desc, ...}），
+// 解析一次後整個 session 共用；切換語系時作廢重載。
 let skillStringsPromise: Promise<SkillStringTable> | null = null;
+onLocaleChange(() => {
+  skillStringsPromise = null;
+});
 
 function loadSkillStrings(): Promise<SkillStringTable> {
   if (!skillStringsPromise) {
-    skillStringsPromise = getNode("String/TW/Skill").then((node) => {
+    skillStringsPromise = getNode(`String/${getActiveLocale()}/Skill`).then((node) => {
       try {
         return JSON.parse(node.text_asset ?? "{}") as SkillStringTable;
       } catch {
@@ -644,7 +649,7 @@ export function NodeDetail({
           ) : null}
 
           {detail.text_asset != null ? (
-            detail.path === "Etc/TW/Commodity" ? (
+            detail.path === `Etc/${getActiveLocale()}/Commodity` ? (
               <CommodityShop key={detail.path} text={detail.text_asset} />
             ) : (
               <TextAssetCard key={detail.path} text={detail.text_asset} />

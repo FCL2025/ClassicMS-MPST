@@ -186,6 +186,9 @@ export const getAudio = (path: string): Promise<AudioResult> => backend().getAud
 export const searchNodes = (query: string, scope?: string | null, limit = 200): Promise<SearchHit[]> =>
   backend().searchNodes(query, scope, limit);
 
+/** 切換作用中的語系代碼（本機模式委派 wasm；雲端為單一語系 no-op）。 */
+export const setRegion = (code: string): Promise<void> => backend().setRegion(code);
+
 // ---------------------------------------------------------------------------
 // export 契約：功能頁（依來源委派）
 // ---------------------------------------------------------------------------

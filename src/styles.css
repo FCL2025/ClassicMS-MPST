@@ -156,6 +156,41 @@ textarea:focus-visible,
   color: var(--disabled);
 }
 
+.region-select {
+  display: inline-flex;
+  min-height: 32px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--button-bg);
+  color: var(--text-strong);
+  padding: 0 8px 0 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.region-select-label {
+  color: var(--muted);
+}
+
+.region-select select {
+  border: none;
+  background: transparent;
+  color: var(--text-strong);
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 2px 2px;
+  cursor: pointer;
+}
+
+.region-select select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: var(--radius-sm);
+}
+
 .app-body {
   display: grid;
   min-width: 0;
