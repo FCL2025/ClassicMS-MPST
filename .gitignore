@@ -45,8 +45,7 @@ StreamingAssets/
 .dev.vars
 .dev.vars.*
 !.dev.vars.example
-/.claude/settings.local.json
-/.claude/worktrees/
+/.claude/
 *.log
 npm-debug.log*
 

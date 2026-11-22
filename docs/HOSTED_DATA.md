@@ -323,8 +323,7 @@ DeleteObjects，一次 1,000 個 key，三萬個物件只要 30 個請求。預�
 
 所以「上傳新版本」和「網站切到新版本」是兩件獨立的事：只上傳，線上站仍然讀舊的。
 順序必須是 **資料全部上傳完 → 改 `vite.config.hosted.ts` → 重新 build + deploy**，
-這樣切換是原子的，中間不會出現半新半舊的破圖狀態。整套流程見
-`.claude/skills/redeploy-hosted-data/SKILL.md`。
+這樣切換是原子的，中間不會出現半新半舊的破圖狀態。
 
 本機驗證已過：gzip 資料集端到端（tooltip、怪物明細、切圖）、serve_hosted 的
 .json→.json.gz fallback（curl --compressed 比對一致）、upload dry-run
