@@ -1,12 +1,21 @@
-# Rust
+# Rust / Tauri
 **/target/
 /MapleLib-Rust/
+/src-tauri/gen/schemas/
 
 # Node / Vite
-/node_modules/
+node_modules/
 /dist/
 /dist-web/
 /dist-hosted/
+*.tsbuildinfo
+
+# Local game installations and raw archives
+/maplestory_classic/
+/Maplestory_Classic_Data/
+StreamingAssets/
+*.bundle
+*.wz
 
 # Generated analysis and local caches
 /web-wasm/pkg/
@@ -16,10 +25,28 @@
 /.cache/
 *.cache
 
+# Local Windows UI capture and navigation scripts
+/scripts/click.ps1
+/scripts/click_once.ps1
+/scripts/click_topmost.ps1
+/scripts/nav2.ps1
+/scripts/nav3.ps1
+/scripts/nav4.ps1
+/scripts/nav_demo.ps1
+/scripts/screenshot.ps1
+/scripts/screenshot_browser.ps1
+/scripts/skill_nav.ps1
+
 # Local configuration and logs
 .env
 .env.*
 !.env.example
+/.wrangler/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+/.claude/settings.local.json
+/.claude/worktrees/
 *.log
 npm-debug.log*
 
