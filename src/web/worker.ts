@@ -10,13 +10,6 @@
 import init, * as wasm from "../../web-wasm/pkg/msclassic_web.js";
 import type { ImportProgress } from "../api";
 
-// wasm-bindgen 產物內的 shim snippet(目錄含 hash,用 glob 免寫死)。
-// 必須與 glue import 的是同一份檔案(同一模組實例),__setSyncHandles 才有效。
-interface Shims {
-  __setSyncHandles(handles: FileSystemSyncAccessHandle[], cache?: FileSystemSyncAccessHandle | null): void;
-  __takeExported(): { path: string; bytes: Uint8Array }[];
-}
-
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
 
 const COPY_CHUNK = 16 * 1024 * 1024;
@@ -29,19 +22,7 @@ interface BundleMeta {
   lastModified: number;
 }
 
-// wasm 初始化(只需一次);shim snippet 與 wasm URL 由 Vite 處理。
-const ready: Promise<Shims> = (async () => {
-  const shimLoaders = import.meta.glob<Shims>(
-    "../../web-wasm/pkg/snippets/*/wasm_shims/msclassic_shims.js",
-  );
-  const loader = Object.values(shimLoaders)[0];
-  if (!loader) throw new Error("找不到 wasm shim snippet(請先執行 npm run build:wasm)");
-  const [shims] = await Promise.all([
-    loader(),
-    init(new URL("../../web-wasm/pkg/msclassic_web_bg.wasm", import.meta.url)),
-  ]);
-  return shims;
-})();
+const ready = init({ module_or_path: new URL("../../web-wasm/pkg/msclassic_web_bg.wasm", import.meta.url) });
 
 // 目前開著的 sync handle(re-import 時先關掉)。
 let bundleHandles: FileSystemSyncAccessHandle[] = [];
@@ -141,8 +122,7 @@ async function cachedManifest(): Promise<BundleMeta[] | null> {
 async function openCached(): Promise<unknown | null> {
   const manifest = await cachedManifest();
   if (!manifest) return null;
-  const shims = await ready;
-  await openSyncHandles(shims, manifest);
+  await openSyncHandles(manifest);
   report({ phase: "catalog", percent: 100, message: "正在載入資產索引…" });
   return wasm.open(manifest);
 }
@@ -248,7 +228,7 @@ async function syncBundlesToOpfs(files: File[]): Promise<BundleMeta[]> {
 }
 
 /** 依 manifest 開啟所有 bundle 與 catalog 快取的 sync handle 並注入 shim。 */
-async function openSyncHandles(shims: Shims, manifest: BundleMeta[]): Promise<void> {
+async function openSyncHandles(manifest: BundleMeta[]): Promise<void> {
   closeHandles();
   const root = await navigator.storage.getDirectory();
   const handles: FileSystemSyncAccessHandle[] = [];
@@ -279,27 +259,26 @@ async function openSyncHandles(shims: Shims, manifest: BundleMeta[]): Promise<vo
   }
   bundleHandles = handles;
   cacheHandle = cache;
-  shims.__setSyncHandles(handles, cache);
+  wasm.set_sync_handles(handles, cache);
 }
 
 async function importBundles(files: File[]): Promise<unknown> {
-  const shims = await ready;
   const manifest = await syncBundlesToOpfs(files);
-  await openSyncHandles(shims, manifest);
+  await openSyncHandles(manifest);
   report({ phase: "catalog", percent: 100, message: "正在建立資產索引…" });
   // wasm open 是同步的(catalog build 可能數十秒),在 Worker 跑不會凍結 UI。
   return wasm.open(manifest);
 }
 
-async function exportSubtree(shims: Shims, path: string): Promise<unknown> {
+function exportSubtree(path: string) {
   const count = wasm.export_subtree(path) as number;
-  return { count, files: shims.__takeExported() };
+  return { count, files: wasm.take_exported_files() };
 }
 
 async function dispatch(method: string, args: unknown[]): Promise<unknown> {
   // checkCached 只看 OPFS 中繼資料,不需等 wasm 初始化(啟動探測用)。
   if (method === "checkCached") return (await cachedManifest()) !== null;
-  const shims = await ready;
+  await ready;
   switch (method) {
     case "openCached":
       return enqueueOpen(openCached);
@@ -357,6 +336,8 @@ async function dispatch(method: string, args: unknown[]): Promise<unknown> {
         (args[1] as string | null | undefined) ?? null,
         args[2] as string,
       );
+    case "setRegion":
+      return wasm.set_region(args[0] as string);
     case "searchNodes":
       return wasm.search_nodes(
         args[0] as string,
@@ -366,7 +347,7 @@ async function dispatch(method: string, args: unknown[]): Promise<unknown> {
     case "exportFile":
       return wasm.export_file(args[0] as string, args[1] as string);
     case "exportSubtree":
-      return exportSubtree(shims, args[0] as string);
+      return exportSubtree(args[0] as string);
     default:
       throw new Error(`未知 RPC method: ${method}`);
   }

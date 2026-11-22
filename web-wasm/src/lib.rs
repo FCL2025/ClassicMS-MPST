@@ -103,6 +103,17 @@ struct OpenResultWeb {
     data_dir: String,
 }
 
+/// 讓 Worker 的讀檔與匯出都使用目前 wasm 綁定的同一個 JS 模組。
+#[wasm_bindgen]
+pub fn set_sync_handles(handles: &js_sys::Array, cache: &JsValue) {
+    msclassic::wasm_shims::set_sync_handles(handles, cache);
+}
+
+#[wasm_bindgen]
+pub fn take_exported_files() -> js_sys::Array {
+    msclassic::wasm_shims::take_exported_files()
+}
+
 /// 開啟資料集。`manifest` 是 JS 物件陣列 `[{ name, size, lastModified }]`，
 /// 順序固定即 fileIndex（需與 `__setSyncHandles` 的 handle 陣列同序）。
 /// 重複呼叫會丟掉舊的 DataService 重建。
@@ -130,6 +141,23 @@ pub fn list_children(path: &str) -> Result<JsValue, JsValue> {
 #[wasm_bindgen]
 pub fn get_node(path: &str) -> Result<JsValue, JsValue> {
     with_service(|s| s.get_node(path).map_err(|e| e.to_string())).and_then(|v| to_js(&v))
+}
+
+/// 切換作用中的語系代碼；語意對齊 gui.rs 的 set_region。
+#[wasm_bindgen]
+pub fn set_region(code: &str) -> Result<(), JsValue> {
+    SERVICE
+        .with(|cell| {
+            let mut borrow = cell.borrow_mut();
+            let service = borrow
+                .as_ref()
+                .ok_or_else(|| "尚未開啟資料集，請先呼叫 open".to_string())?;
+            if service.locale() != code {
+                *borrow = Some(service.with_locale(code).map_err(|e| e.to_string())?);
+            }
+            Ok::<(), String>(())
+        })
+        .map_err(js_err)
 }
 
 #[wasm_bindgen]

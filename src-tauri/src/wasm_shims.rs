@@ -3,8 +3,7 @@
 //! shim 原始檔在 `src-tauri/wasm_shims/msclassic_shims.js`（`/` 開頭的 module
 //! 路徑以 msclassic 的 crate root 為基準）；wasm-bindgen 會把它當 local file
 //! 複製成 `web-wasm/pkg/snippets/msclassic-*/wasm_shims/msclassic_shims.js`
-//! 並由 glue 相對 import。Worker 端 import 同一個 snippet URL 即為同一模組實例，
-//! 可呼叫 `__setSyncHandles` 注入 OPFS handle、`__takeExported` 取匯出收集器。
+//! Worker 經 wasm 匯出函式設定檔案與取回匯出結果，兩者共用此模組的狀態。
 //! （wasm-bindgen 0.2 不支援 `./` 相對 module 路徑，故用此形式。）
 //!
 //! - `syncReadAt`：用預先開好的 `FileSystemSyncAccessHandle` 陣列做同步隨機讀。
@@ -19,6 +18,12 @@ use crate::unity::bundle::RangeRead;
 
 #[wasm_bindgen(module = "/wasm_shims/msclassic_shims.js")]
 extern "C" {
+    #[wasm_bindgen(js_name = __setSyncHandles)]
+    pub fn set_sync_handles(handles: &js_sys::Array, cache: &JsValue);
+
+    #[wasm_bindgen(js_name = __takeExported)]
+    pub fn take_exported_files() -> js_sys::Array;
+
     /// 同步讀 bundle：[offset, offset+length)；JS 端 throw 會轉成 Err。
     #[wasm_bindgen(catch, js_name = syncReadAt)]
     fn sync_read_at(

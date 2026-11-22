@@ -76,10 +76,10 @@ impl DataService {
         }
         candidates.push(img_key.clone());
         for candidate in &candidates {
-            if let Some(entry) = self.catalog.image.sheets.get(candidate).cloned() {
+            if let Some(entry) = self.sheet(candidate) {
                 let per_img = *candidate == img_key;
                 return self
-                    .render_sheet(&entry, candidate, &img_key, &inner, per_img)
+                    .render_sheet(entry, candidate, &img_key, &inner, per_img)
                     .map(Some);
             }
         }
@@ -115,7 +115,7 @@ impl DataService {
         candidates.push(img_key);
 
         for candidate in candidates {
-            let Some(entry) = self.catalog.image.sheets.get(&candidate) else {
+            let Some(entry) = self.sheet(&candidate) else {
                 continue;
             };
             let Some((_, location)) = entry.atlas_pages.first() else {

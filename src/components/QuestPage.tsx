@@ -1,3 +1,4 @@
+import { createDatasetCache } from "../locale";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -20,7 +21,7 @@ import { DropItemTooltip, ItemTooltip } from "./ItemTooltip";
 import { parseMapleText, type TextSegment } from "./skillJobs";
 
 // NPC 立繪走既有 get_image（Npc/<7 碼 id>/stand/0），整個 session 快取。
-const npcPortraitCache = new Map<number, Promise<string | null>>();
+const npcPortraitCache = createDatasetCache<number, Promise<string | null>>();
 
 function loadNpcPortrait(npcId: number): Promise<string | null> {
   let cached = npcPortraitCache.get(npcId);
@@ -92,7 +93,7 @@ function QuestInlineItem({
 }
 
 /** 台詞內嵌的道具名稱（#t<id># 段）：名稱懶載入 + hover tooltip。 */
-const inlineItemNameCache = new Map<number, Promise<string | null>>();
+const inlineItemNameCache = createDatasetCache<number, Promise<string | null>>();
 
 function loadInlineItemName(id: number): Promise<string | null> {
   let cached = inlineItemNameCache.get(id);

@@ -39,7 +39,7 @@ impl DataService {
     /// 商城商品清單：解析 `Etc/TW/Commodity`，依 SN 排序並補齊名稱與 icon。
     /// 資料集沒有此資產時回傳空清單。
     pub fn get_commodity_items(&self) -> Result<Vec<CommodityItem>> {
-        let Ok(node) = self.get_node("Etc/TW/Commodity") else {
+        let Ok(node) = self.get_node(&self.etc_path("Commodity")) else {
             return Ok(Vec::new());
         };
         let Some(text) = node.text_asset else {
@@ -114,8 +114,8 @@ impl DataService {
             return Ok(tables.clone());
         }
         let tables = Arc::new(NameTables {
-            items: load_names(self, "String/TW/Item"),
-            pets: load_names(self, "String/TW/Pet"),
+            items: load_names(self, &self.string_path("Item")),
+            pets: load_names(self, &self.string_path("Pet")),
         });
         *guard = Some(tables.clone());
         Ok(tables)

@@ -22,6 +22,10 @@ export interface OpenInfo {
   elapsed_ms: number;
   entry_count: number;
   bundle_count: number;
+  /** 目前作用中的語系代碼。 */
+  locale: string;
+  /** 資料集內偵測到的所有語系代碼（偏好順序；長度 > 1 時顯示切換器）。 */
+  locales: string[];
 }
 
 export interface OpenResult {
@@ -457,6 +461,8 @@ export interface SearchHit {
 
 export const searchNodes = (query: string, scope?: string | null, limit = 200) =>
   rpc<SearchHit[]>("searchNodes", query, scope ?? null, limit);
+/** 切換作用中的語系代碼（資料集含多個語系時用）。 */
+export const setRegion = (code: string) => rpc<void>("setRegion", code);
 
 export const getItemTooltip = (path: string) =>
   rpc<ItemTooltip | null>("getItemTooltip", path);

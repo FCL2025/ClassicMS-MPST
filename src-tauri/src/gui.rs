@@ -141,6 +141,8 @@ fn open_info_for(service: &DataService) -> OpenInfo {
         elapsed_ms: 0,
         entry_count: service.catalog.entries.len(),
         bundle_count: service.catalog.bundles.len(),
+        locale: service.locale().to_owned(),
+        locales: service.locales.clone(),
     }
 }
 
@@ -550,6 +552,25 @@ async fn export_file(
     .await
 }
 
+/// 切換作用中的語系代碼（資料集含多個語系時，前端下拉選單用）。
+#[tauri::command]
+async fn set_region(code: String, state: State<'_, AppState>) -> Result<(), String> {
+    let state = state.inner().clone();
+    blocking(move || {
+        let mut current = state.service.write().map_err(|error| error.to_string())?;
+        let service = current.as_ref().ok_or("尚未選擇遊戲資料目錄")?;
+        if service.locale() != code {
+            *current = Some(Arc::new(
+                service
+                    .with_locale(&code)
+                    .map_err(|error| error.to_string())?,
+            ));
+        }
+        Ok(())
+    })
+    .await
+}
+
 #[tauri::command]
 fn initial_path() -> Option<String> {
     std::env::var("MSCLASSIC_INITIAL_PATH")
@@ -624,6 +645,7 @@ pub fn run() {
             get_quest_detail,
             get_map_bgm_index,
             search_nodes,
+            set_region,
             export_subtree,
             export_file,
             initial_path,

@@ -115,7 +115,7 @@ fn parse(data: &[u8]) -> Option<Wzss> {
 }
 
 fn load(svc: &DataService, key: &str) -> Option<Wzss> {
-    let entry = svc.catalog.image.sheets.get(key)?;
+    let entry = svc.sheet(key)?;
     let payload = svc.read_entry(entry.index_loc.as_ref()?).ok()?;
     let mono = objects::parse_mono_behaviour(&payload, true).ok()?;
     parse(payload.get(mono.header_len..)?)
@@ -281,7 +281,7 @@ fn xcheck(a: &str, b: &str) {
 ///   輸出到 out/wzss_pairs.txt，供雜湊函式爆破使用。
 fn pairs(limit: Option<usize>) {
     let svc = open();
-    let keys: Vec<String> = svc.catalog.image.sheets.keys().cloned().collect();
+    let keys: Vec<String> = svc.sheets().map(|(key, _)| key).cloned().collect();
     let mut out = String::new();
     let mut count = 0usize;
     for key in keys.iter().take(limit.unwrap_or(usize::MAX)) {
@@ -354,7 +354,7 @@ fn poolb(key: &str) {
 
 fn stats(limit: Option<usize>) {
     let svc = open();
-    let keys: Vec<String> = svc.catalog.image.sheets.keys().cloned().collect();
+    let keys: Vec<String> = svc.sheets().map(|(key, _)| key).cloned().collect();
     let mut checked = 0usize;
     let mut ok_counts = 0usize;
     let mut bad_counts = Vec::new();

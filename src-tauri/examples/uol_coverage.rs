@@ -35,7 +35,7 @@ fn main() {
     .unwrap();
     eprintln!("索引 {} 筆（{}ms）", info.entry_count, info.elapsed_ms);
 
-    let keys: Vec<String> = svc.catalog.image.sheets.keys().cloned().collect();
+    let keys: Vec<String> = svc.sheets().map(|(key, _)| key).cloned().collect();
     let mut exact = 0usize;
     let mut atlas = 0usize;
     let mut none = 0usize;

@@ -115,7 +115,7 @@ fn main() {
     )
     .unwrap();
 
-    let keys: Vec<String> = svc.catalog.image.sheets.keys().cloned().collect();
+    let keys: Vec<String> = svc.sheets().map(|(key, _)| key).cloned().collect();
     let (mut sheets, mut no_tree, mut parse_fail) = (0usize, 0usize, 0usize);
     let (mut key_all_found, mut key_partial) = (0usize, 0usize);
     let (mut canvas_total, mut canvas_hit, mut canvas_resolved) = (0usize, 0usize, 0usize);
@@ -124,7 +124,7 @@ fn main() {
     let mut samples: Vec<String> = Vec::new();
 
     for key in keys.iter().take(limit) {
-        let Some(entry) = svc.catalog.image.sheets.get(key) else {
+        let Some(entry) = svc.sheet(key) else {
             continue;
         };
         let Some(index_loc) = entry.index_loc.as_ref() else {

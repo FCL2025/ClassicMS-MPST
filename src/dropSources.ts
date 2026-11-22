@@ -2,16 +2,22 @@
 // 都從這裡拿（圖鑑戰利品 ∪ 任務道具補充表），圖鑑清單整個 session 只抓一次。
 
 import { getMonsterBook, type MonsterSummary } from "./api";
+import { onDatasetChange } from "./locale";
 import { QUEST_ITEM_DROPS } from "./questDrops";
 
 let bookPromise: Promise<MonsterSummary[]> | null = null;
 
+onDatasetChange(() => {
+  bookPromise = null;
+});
+
 /** 圖鑑清單只抓一次（MonsterBookPage 清單與各頁的掉落來源彈窗共用）；失敗時允許重試。 */
 export function loadMonsterBookOnce(): Promise<MonsterSummary[]> {
   if (!bookPromise) {
-    bookPromise = getMonsterBook();
-    bookPromise.catch(() => {
-      bookPromise = null;
+    const request = getMonsterBook();
+    bookPromise = request;
+    request.catch(() => {
+      if (bookPromise === request) bookPromise = null;
     });
   }
   return bookPromise;

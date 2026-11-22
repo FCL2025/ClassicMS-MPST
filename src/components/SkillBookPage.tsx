@@ -1,3 +1,4 @@
+import { createDatasetCache } from "../locale";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   getImage,
@@ -21,7 +22,7 @@ import {
 } from "./skillJobs";
 
 // 技能 icon 走既有的 get_image（Skill/<job>/skill/<id>/icon），整個 session 快取。
-const iconCache = new Map<string, Promise<string | null>>();
+const iconCache = createDatasetCache<string, Promise<string | null>>();
 
 function loadSkillIcon(job: string, id: string): Promise<string | null> {
   const key = `${job}/${id}`;

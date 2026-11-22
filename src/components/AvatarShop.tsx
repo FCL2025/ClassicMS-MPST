@@ -1,3 +1,4 @@
+import { createDatasetCache } from "../locale";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { getImage, type EquipItem } from "../api";
 import type { EquipSlot, PartsState } from "./AvatarPage";
@@ -51,7 +52,7 @@ function fuzzyScore(query: string, name: string, id: string): number | null {
 }
 
 // icon dataURL 快取（module-level）：裝備近七千件，只抓看過的，看過就不再抓。
-const iconCache = new Map<string, Promise<string | null>>();
+const iconCache = createDatasetCache<string, Promise<string | null>>();
 
 // 依 iconPath 載入 icon；取不到時依路徑型態試替代節點：
 // 裝備 info/icon → info/iconRaw；髮型 default/hairOverHead → default/hair

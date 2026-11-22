@@ -29,14 +29,14 @@ fn main() {
     let (svc, info) = DataService::open(std::path::Path::new(DEFAULT_DATA_DIR), cache).unwrap();
     eprintln!("索引 {} 筆（{}ms）", info.entry_count, info.elapsed_ms);
 
-    let keys: Vec<String> = svc.catalog.image.sheets.keys().cloned().collect();
+    let keys: Vec<String> = svc.sheets().map(|(key, _)| key).cloned().collect();
     let mut sheets = 0usize;
     let mut sheets_full = 0usize;
     let mut canvas_total = 0usize;
     let mut canvas_exact = 0usize;
     let mut misses: Vec<String> = Vec::new();
     for key in &keys {
-        let entry = &svc.catalog.image.sheets[key];
+        let entry = svc.sheet(key).expect("列出的圖集應存在");
         let Some(index_loc) = entry.index_loc.as_ref() else {
             continue;
         };

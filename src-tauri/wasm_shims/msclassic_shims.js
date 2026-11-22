@@ -4,9 +4,7 @@
 // `#[wasm_bindgen(module = "/wasm_shims/msclassic_shims.js")]` import，
 // wasm-bindgen 會把它複製成
 //   web-wasm/pkg/snippets/msclassic-*/wasm_shims/msclassic_shims.js
-// 並由 glue 相對 import。**Worker 要 import 的是 pkg 下的那份 snippet**
-// （同一 URL = 同一模組實例），init wasm 後、呼叫 open 前
-// 必須先用 __setSyncHandles 注入 OPFS 的同步 handle。
+// Worker 透過 wasm 設定 OPFS handle 與取回匯出結果，使用當次建置所引用的模組。
 //
 // 防禦性說明：FileSystemSyncAccessHandle 的同步 read/write/truncate 是
 // Baseline（Chrome/Edge 102+、Firefox 111+、Safari 15.2+）；更舊的瀏覽器

@@ -101,8 +101,8 @@ impl DataService {
     }
 
     fn build_name_index(&self) -> Vec<NameEntry> {
-        let mut names = crate::commodity::load_names(self, "String/TW/Item");
-        for (id, name) in crate::commodity::load_names(self, "String/TW/Pet") {
+        let mut names = crate::commodity::load_names(self, &self.string_path("Item"));
+        for (id, name) in crate::commodity::load_names(self, &self.string_path("Pet")) {
             names.entry(id).or_insert(name);
         }
         let mut out: Vec<NameEntry> = names

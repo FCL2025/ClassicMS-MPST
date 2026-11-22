@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "開啟（含圖片索引重建）: {}ms entries={} sheets={} set_assets={}",
         info.elapsed_ms,
         info.entry_count,
-        svc.catalog.image.sheets.len(),
+        svc.sheets().count(),
         svc.catalog.image.set_assets.len()
     );
     println!("建索引總耗時: {:.2?}", t0.elapsed());

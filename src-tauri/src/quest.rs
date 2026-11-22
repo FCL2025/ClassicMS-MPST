@@ -12,9 +12,10 @@ use crate::catalog::{CatalogError, DataService, Result};
 use crate::commodity::load_names;
 use crate::wzjs::{Value, WzNode};
 
-/// 任務字串表資產路徑（TextAsset，UTF-8 明文 JSON：
+/// 任務字串表（String 下的）葉節點名；完整路徑以目前語系組出
+/// （`String/<locale>/QuestData`，TextAsset，UTF-8 明文 JSON：
 /// id → {name, Info: {階段: 說明, parent}, Say: {鍵: 台詞}}）。
-const STRING_QUEST_DATA: &str = "String/TW/QuestData";
+const QUEST_DATA_LEAF: &str = "QuestData";
 /// 對話腳本 img。
 const QUEST_SAY: &str = "Quest/Say";
 /// 需求 img（"0"=開始需求、"1"=完成需求）。
@@ -238,7 +239,8 @@ impl DataService {
         let data = self.quest_data()?;
         let Some(strings) = data.get(id) else {
             return Err(CatalogError::PathNotFound(format!(
-                "{STRING_QUEST_DATA}/{id}"
+                "{}/{id}",
+                self.string_path(QUEST_DATA_LEAF)
             )));
         };
         let say = self.quest_tree(QUEST_SAY)?;
@@ -351,14 +353,14 @@ impl DataService {
         if let Some(tables) = guard.as_ref() {
             return Ok(tables.clone());
         }
-        let mut items = load_names(self, "String/TW/Item");
-        for (id, name) in load_names(self, "String/TW/Pet") {
+        let mut items = load_names(self, &self.string_path("Item"));
+        for (id, name) in load_names(self, &self.string_path("Pet")) {
             items.entry(id).or_insert(name);
         }
         let tables = Arc::new(QuestNameTables {
-            npcs: load_names(self, "String/TW/Npc"),
+            npcs: load_names(self, &self.string_path("Npc")),
             items,
-            mobs: load_names(self, "String/TW/Mob"),
+            mobs: load_names(self, &self.string_path("Mob")),
             maps: load_map_names(self),
         });
         *guard = Some(tables.clone());
@@ -611,7 +613,7 @@ fn substitute_refs(text: &str, names: &QuestNameTables) -> String {
 /// 解析 `String/TW/Map`（`{id: {mapName, ...}}`），地圖 id → 地圖名。
 fn load_map_names(service: &DataService) -> HashMap<u32, String> {
     let mut table = HashMap::new();
-    let Ok(node) = service.get_node("String/TW/Map") else {
+    let Ok(node) = service.get_node(&service.string_path("Map")) else {
         return table;
     };
     let Some(text) = node.text_asset else {
@@ -635,7 +637,7 @@ fn load_map_names(service: &DataService) -> HashMap<u32, String> {
 /// 解析 `String/TW/QuestData`（`{id: {name, Info: {階段, parent}, Say: {鍵: 台詞}}}`）。
 fn load_quest_data(service: &DataService) -> QuestDataTables {
     let mut table = HashMap::new();
-    let Ok(node) = service.get_node(STRING_QUEST_DATA) else {
+    let Ok(node) = service.get_node(&service.string_path(QUEST_DATA_LEAF)) else {
         return table;
     };
     let Some(text) = node.text_asset else {

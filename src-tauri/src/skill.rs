@@ -10,8 +10,9 @@ use serde::Serialize;
 use crate::catalog::{CatalogError, DataService, Result};
 use crate::wzjs::{Value, WzNode};
 
-/// 技能字串表資產路徑（TextAsset，UTF-8 明文 JSON：id → {Name, Desc, H, LevelDesc}）。
-const STRING_SKILL: &str = "String/TW/Skill";
+/// 技能字串表（String 下的）葉節點名；完整路徑以目前語系組出
+/// （`String/<locale>/Skill`，TextAsset，UTF-8 明文 JSON：id → {Name, Desc, H, LevelDesc}）。
+const SKILL_LEAF: &str = "Skill";
 /// 技能動作影格來源（`<動作名>/<影格>/delay`）。
 const CHARACTER: &str = "Character/00002000";
 
@@ -414,7 +415,7 @@ fn strip_bom(text: &str) -> &str {
 /// 解析 `String/TW/Skill`（`{id: {Name, Desc, H, LevelDesc}}`）。
 fn load_skill_strings(service: &DataService) -> SkillStringTables {
     let mut table = HashMap::new();
-    let Ok(node) = service.get_node(STRING_SKILL) else {
+    let Ok(node) = service.get_node(&service.string_path(SKILL_LEAF)) else {
         return table;
     };
     let Some(text) = node.text_asset else {

@@ -271,7 +271,7 @@ impl DataService {
 
     fn load_item_names(&self) -> Result<ItemNameTable> {
         let mut table = ItemNameTable::new();
-        let Ok(node) = self.get_node("String/TW/Item") else {
+        let Ok(node) = self.get_node(&self.string_path("Item")) else {
             return Ok(table);
         };
         let Some(text) = node.text_asset else {

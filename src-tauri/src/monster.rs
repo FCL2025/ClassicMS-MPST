@@ -309,12 +309,12 @@ impl DataService {
         if let Some(tables) = guard.as_ref() {
             return Ok(tables.clone());
         }
-        let mut items = load_names(self, "String/TW/Item");
-        for (id, name) in load_names(self, "String/TW/Pet") {
+        let mut items = load_names(self, &self.string_path("Item"));
+        for (id, name) in load_names(self, &self.string_path("Pet")) {
             items.entry(id).or_insert(name);
         }
         let tables = Arc::new(MonsterNameTables {
-            mobs: load_names(self, "String/TW/Mob"),
+            mobs: load_names(self, &self.string_path("Mob")),
             book_texts: load_book_texts(self),
             maps: load_map_names(self),
             items,
@@ -394,7 +394,7 @@ fn strip_bom(text: &str) -> &str {
 /// 格式為 `等級：Lv.8\n型態：植物\n\n描述…`。
 fn load_book_texts(service: &DataService) -> HashMap<u32, BookText> {
     let mut table = HashMap::new();
-    let Ok(node) = service.get_node("String/TW/MonsterBook") else {
+    let Ok(node) = service.get_node(&service.string_path("MonsterBook")) else {
         return table;
     };
     let Some(text) = node.text_asset else {
@@ -420,13 +420,23 @@ fn parse_book_text(raw: &str) -> BookText {
     let mut level = None;
     let mut category = None;
     for line in normalized.lines() {
-        if let Some(rest) = line.strip_prefix("等級：Lv.") {
-            level = rest.trim().parse::<i64>().ok();
-        } else if let Some(rest) = line.strip_prefix("型態：") {
-            let value = rest.trim();
-            if !value.is_empty() {
-                category = Some(value.to_string());
+        let Some((label, value)) = line.split_once(['：', ':']) else {
+            continue;
+        };
+        let value = value.trim();
+        match label.trim() {
+            "等級" | "等级" => {
+                level = value
+                    .strip_prefix("Lv.")
+                    .unwrap_or(value)
+                    .trim()
+                    .parse()
+                    .ok();
             }
+            "型態" | "形态" | "型态" | "类型" if !value.is_empty() => {
+                category = Some(value.to_owned())
+            }
+            _ => {}
         }
     }
     let description = normalized
@@ -443,7 +453,7 @@ fn parse_book_text(raw: &str) -> BookText {
 /// 解析 `String/TW/Map`（`{id: {streetName, mapName}}`）成 id →「地區 : 地圖名」。
 pub(crate) fn load_map_names(service: &DataService) -> HashMap<u32, String> {
     let mut table = HashMap::new();
-    let Ok(node) = service.get_node("String/TW/Map") else {
+    let Ok(node) = service.get_node(&service.string_path("Map")) else {
         return table;
     };
     let Some(text) = node.text_asset else {
@@ -485,6 +495,14 @@ mod tests {
             text.description.as_deref(),
             Some("在楓之島常見的怪物。\n第二行")
         );
+    }
+
+    #[test]
+    fn parse_simplified_book_fields() {
+        let text = parse_book_text("等级：Lv.8\\n类型：植物\\n\\n说明");
+        assert_eq!(text.level, Some(8));
+        assert_eq!(text.category.as_deref(), Some("植物"));
+        assert_eq!(text.description.as_deref(), Some("说明"));
     }
 
     #[test]

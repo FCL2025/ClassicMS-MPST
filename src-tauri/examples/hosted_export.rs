@@ -85,15 +85,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         info.elapsed_ms,
         info.entry_count,
         info.bundle_count,
-        svc.catalog.image.sheets.len()
+        svc.sheets().count()
     );
 
     // 驗證「img 邏輯路徑 == sheet key」的對應關係。
     let missing = svc
-        .catalog
-        .image
-        .sheets
-        .keys()
+        .sheets()
+        .map(|(key, _)| key)
         .filter(|key| !svc.catalog.entries.contains_key(*key))
         .take(5)
         .cloned()
@@ -255,7 +253,7 @@ fn export_one_tree(
     let tree = svc.tree_for(img_key)?;
 
     // 同一 img 的 spritesheet（key == img 邏輯路徑）。
-    let sheet_index = match svc.catalog.image.sheets.get(img_key) {
+    let sheet_index = match svc.sheet(img_key) {
         Some(sheet) => match &sheet.index_loc {
             Some(index_loc) => {
                 let payload = svc.read_entry(index_loc)?;
@@ -435,17 +433,11 @@ fn export_sheets(
     stats: &mut Stats,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let sheets_dir = out_root.join("sheets");
-    let total_pages: usize = svc
-        .catalog
-        .image
-        .sheets
-        .values()
-        .map(|s| s.atlas_pages.len())
-        .sum();
+    let total_pages: usize = svc.sheets().map(|(_, sheet)| sheet.atlas_pages.len()).sum();
     println!("[sheets] 共 {} 頁（limit={limit:?}）", total_pages);
     let mut bundles = BundleCache::new(svc);
 
-    'outer: for (key, sheet) in &svc.catalog.image.sheets {
+    'outer: for (key, sheet) in svc.sheets() {
         for (page, loc) in &sheet.atlas_pages {
             if limit.is_some_and(|n| stats.sheets + stats.sheet_fail >= n) {
                 break 'outer;
@@ -512,11 +504,8 @@ fn export_textures(
 ) -> Result<(), Box<dyn std::error::Error>> {
     // sheet atlas 頁的位置集合：掃到就跳過（以 sheets/ 命名為準，不重複寫）。
     let sheet_pages: HashSet<(u32, u32, u64)> = svc
-        .catalog
-        .image
-        .sheets
-        .values()
-        .flat_map(|s| s.atlas_pages.iter())
+        .sheets()
+        .flat_map(|(_, sheet)| &sheet.atlas_pages)
         .map(|(_, loc)| (loc.bundle_index, loc.node_index, loc.abs_offset))
         .collect();
 

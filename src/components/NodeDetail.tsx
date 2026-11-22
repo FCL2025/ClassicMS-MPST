@@ -19,6 +19,7 @@ import {
 import { ImagePreview } from "./ImagePreview";
 import { ItemTooltip } from "./ItemTooltip";
 import { CommodityShop } from "./CommodityShop";
+import { createDatasetCache, getActiveLocale, onDatasetChange } from "../locale";
 
 interface NodeDetailProps {
   path: string | null;
@@ -38,14 +39,18 @@ type SkillStringTable = Record<
   { Name?: string; Desc?: string; LevelDesc?: Record<string, string> }
 >;
 
-// String/TW/Skill 是大型 TextAsset JSON（技能 id → {Name, Desc, ...}），解析一次後整個 session 共用。
+// String/<locale>/Skill 是大型 TextAsset JSON（技能 id → {Name, Desc, ...}），
+// 解析一次後整個 session 共用；切換語系時作廢重載。
 let skillStringsPromise: Promise<SkillStringTable> | null = null;
+onDatasetChange(() => {
+  skillStringsPromise = null;
+});
 
 function loadSkillStrings(): Promise<SkillStringTable> {
   if (!skillStringsPromise) {
-    skillStringsPromise = getNode("String/TW/Skill").then((node) => {
+    skillStringsPromise = getNode(`String/${getActiveLocale()}/Skill`).then((node) => {
       try {
-        return JSON.parse(node.text_asset ?? "{}") as SkillStringTable;
+        return JSON.parse((node.text_asset ?? "{}").trimStart()) as SkillStringTable;
       } catch {
         return {};
       }
@@ -104,7 +109,7 @@ function numericValue(v: Value): number | null {
 }
 
 // Character/00002000/<動作>/<影格>/delay 的 |delay| 加總；同一動作整個 session 只抓一次。
-const actionDelayCache = new Map<string, Promise<number | null>>();
+const actionDelayCache = createDatasetCache<string, Promise<number | null>>();
 
 function loadActionDelay(action: string): Promise<number | null> {
   let cached = actionDelayCache.get(action);
@@ -396,7 +401,7 @@ export function NodeDetail({
     };
   }, [path]);
 
-  // 技能名稱/描述：路徑剛好是技能代碼節點時，查 String/TW/Skill 的名稱表。
+  // 技能名稱/描述：路徑剛好是技能代碼節點時，查目前語系的技能名稱表。
   useEffect(() => {
     const skillId = path ? skillIdFromPath(path) : null;
     if (!skillId) {
@@ -644,7 +649,7 @@ export function NodeDetail({
           ) : null}
 
           {detail.text_asset != null ? (
-            detail.path === "Etc/TW/Commodity" ? (
+            detail.path === `Etc/${getActiveLocale()}/Commodity` ? (
               <CommodityShop key={detail.path} text={detail.text_asset} />
             ) : (
               <TextAssetCard key={detail.path} text={detail.text_asset} />

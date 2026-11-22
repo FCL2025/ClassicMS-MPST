@@ -37,7 +37,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::catalog::EntryLocation;
+use crate::catalog::{DataService, EntryLocation};
 use crate::unity::bundle::Bundle;
 use crate::unity::objects;
 use crate::unity::serialized_file::SerializedFile;
@@ -49,7 +49,7 @@ pub use sheet_asset::{parse_sheet_asset, SheetAsset};
 pub use wzss::{cut_sprite, parse_wzss, AtlasPage, WzssIndex, WzssRect, WzssSprite, WzssUolLink};
 
 /// spritesheet：索引物件 + atlas 頁（依 _0, _1… 排序）。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SheetEntry {
     /// container 條目順序不保證 index 早於 atlas，因此建構途中允許尚未看到 index。
     #[serde(default)]
@@ -71,14 +71,55 @@ pub struct SetSpriteEntry {
 /// 圖片索引。
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ImageIndex {
-    /// "Character/Afterimage/axe"（去前綴）→ spritesheet
-    pub sheets: BTreeMap<String, SheetEntry>,
+    /// 邏輯路徑 → 語系 → 該語系的一組索引與圖頁。
+    #[serde(default)]
+    pub(crate) sheets_by_path: BTreeMap<String, BTreeMap<String, SheetEntry>>,
     /// "Map/WorldMap/BaseImg"（.asset 路徑去前綴去副檔名）→ sprite 清單（名稱 → sprite）
     pub set_assets: BTreeMap<String, BTreeMap<String, SetSpriteEntry>>,
 }
 
-const SHEET_PREFIX: &str = "assets/wzassets/spritesheet/tw/";
+const SHEET_PREFIX: &str = "assets/wzassets/spritesheet/";
 const SET_PREFIX: &str = "assets/wzassets/spriteset/";
+
+fn sheet_path(path: &str) -> Option<(&str, &str)> {
+    let prefix = path.get(..SHEET_PREFIX.len())?;
+    if !prefix.eq_ignore_ascii_case(SHEET_PREFIX) {
+        return None;
+    }
+    let (locale, key) = path[SHEET_PREFIX.len()..].split_once('/')?;
+    (!locale.is_empty() && !key.is_empty()).then_some((locale, key))
+}
+
+/// 優先使用目前語系，再使用共用圖集。只有一份的素材可供各語系共用。
+fn localized_sheet<'a>(
+    variants: &'a BTreeMap<String, SheetEntry>,
+    locale: &str,
+) -> Option<&'a SheetEntry> {
+    if variants.len() == 1 {
+        return variants.values().next();
+    }
+    variants
+        .iter()
+        .find(|(code, _)| code.eq_ignore_ascii_case(locale))
+        .map(|(_, sheet)| sheet)
+        .or_else(|| variants.get("COMMON"))
+}
+
+impl DataService {
+    pub fn sheet(&self, key: &str) -> Option<&SheetEntry> {
+        localized_sheet(self.catalog.image.sheets_by_path.get(key)?, self.locale())
+    }
+
+    pub fn sheets(&self) -> impl Iterator<Item = (&String, &SheetEntry)> {
+        self.catalog
+            .image
+            .sheets_by_path
+            .iter()
+            .filter_map(|(key, variants)| {
+                localized_sheet(variants, self.locale()).map(|sheet| (key, sheet))
+            })
+    }
+}
 
 pub(crate) struct SerializedImageContext<'a> {
     pub bundle: &'a Bundle,
@@ -139,11 +180,9 @@ impl ImageIndex {
         loc_of: &dyn Fn(i64) -> Option<EntryLocation>,
     ) -> Result<()> {
         for e in container {
-            let lower = e.path.to_lowercase();
-            if !lower.starts_with(SHEET_PREFIX) {
+            let Some((locale, rest)) = sheet_path(&e.path) else {
                 continue;
-            }
-            let rest = &e.path[SHEET_PREFIX.len()..];
+            };
             if let Some((key, is_asset)) = rest
                 .strip_suffix(".wzspritesheet")
                 .map(|key| (key, false))
@@ -152,12 +191,12 @@ impl ImageIndex {
                 let Some(index_loc) = loc_of(e.asset.path_id) else {
                     continue;
                 };
-                let key = key.to_string();
-                let entry = self.sheets.entry(key).or_insert_with(|| SheetEntry {
-                    index_loc: None,
-                    index_is_asset: false,
-                    atlas_pages: vec![],
-                });
+                let entry = self
+                    .sheets_by_path
+                    .entry(key.to_owned())
+                    .or_default()
+                    .entry(locale.to_ascii_uppercase())
+                    .or_default();
                 entry.index_loc = Some(index_loc);
                 entry.index_is_asset = is_asset;
             } else if let Some(base) = strip_png_suffix(rest) {
@@ -169,13 +208,11 @@ impl ImageIndex {
                     continue;
                 };
                 let entry = self
-                    .sheets
-                    .entry(key.to_string())
-                    .or_insert_with(|| SheetEntry {
-                        index_loc: None,
-                        index_is_asset: false,
-                        atlas_pages: vec![],
-                    });
+                    .sheets_by_path
+                    .entry(key.to_owned())
+                    .or_default()
+                    .entry(locale.to_ascii_uppercase())
+                    .or_default();
                 if !entry.atlas_pages.iter().any(|(p, _)| *p == page) {
                     entry.atlas_pages.push((page, loc));
                     entry.atlas_pages.sort_by_key(|(p, _)| *p);
@@ -555,7 +592,7 @@ mod tests {
     fn test_sheet_collection_does_not_depend_on_container_order() {
         let container = vec![
             objects::ContainerEntry {
-                path: format!("{SHEET_PREFIX}login_0.png"),
+                path: format!("{SHEET_PREFIX}tw/login_0.png"),
                 preload_index: 0,
                 preload_size: 0,
                 asset: objects::PPtr {
@@ -564,7 +601,7 @@ mod tests {
                 },
             },
             objects::ContainerEntry {
-                path: format!("{SHEET_PREFIX}login.wzspritesheet"),
+                path: format!("{SHEET_PREFIX}tw/login.wzspritesheet"),
                 preload_index: 0,
                 preload_size: 0,
                 asset: objects::PPtr {
@@ -573,7 +610,7 @@ mod tests {
                 },
             },
             objects::ContainerEntry {
-                path: format!("{SHEET_PREFIX}Character/00002000_0.png"),
+                path: format!("{SHEET_PREFIX}tw/Character/00002000_0.png"),
                 preload_index: 0,
                 preload_size: 0,
                 asset: objects::PPtr {
@@ -582,12 +619,32 @@ mod tests {
                 },
             },
             objects::ContainerEntry {
-                path: format!("{SHEET_PREFIX}Character/00002000.asset"),
+                path: format!("{SHEET_PREFIX}tw/Character/00002000.asset"),
                 preload_index: 0,
                 preload_size: 0,
                 asset: objects::PPtr {
                     file_id: 0,
                     path_id: 40,
+                },
+            },
+        ];
+        let cn_login = [
+            objects::ContainerEntry {
+                path: format!("{SHEET_PREFIX}CN/login.wzspritesheet"),
+                preload_index: 0,
+                preload_size: 0,
+                asset: objects::PPtr {
+                    file_id: 0,
+                    path_id: 50,
+                },
+            },
+            objects::ContainerEntry {
+                path: format!("{SHEET_PREFIX}cn/login_0.png"),
+                preload_index: 0,
+                preload_size: 0,
+                asset: objects::PPtr {
+                    file_id: 0,
+                    path_id: 60,
                 },
             },
         ];
@@ -602,12 +659,18 @@ mod tests {
         };
         let mut index = ImageIndex::default();
         index.collect_sheet(&container, &loc_of).unwrap();
-        let sheet = index.sheets.get("login").unwrap();
+        index.collect_sheet(&cn_login, &loc_of).unwrap();
+        let variants = &index.sheets_by_path["login"];
+        let cn = localized_sheet(variants, "CN").unwrap();
+        assert_eq!(cn.index_loc.as_ref().unwrap().abs_offset, 50);
+        assert_eq!(cn.atlas_pages[0].1.abs_offset, 60);
+        let sheet = localized_sheet(variants, "TW").unwrap();
+        assert_eq!(sheet.atlas_pages[0].1.abs_offset, 10);
         assert_eq!(sheet.index_loc.as_ref().unwrap().abs_offset, 20);
         assert!(!sheet.index_is_asset);
         assert_eq!(sheet.atlas_pages.len(), 1);
         assert_eq!(sheet.atlas_pages[0].0, 0);
-        let sheet = index.sheets.get("Character/00002000").unwrap();
+        let sheet = &index.sheets_by_path["Character/00002000"]["TW"];
         assert_eq!(sheet.index_loc.as_ref().unwrap().abs_offset, 40);
         assert!(sheet.index_is_asset);
         assert_eq!(sheet.atlas_pages.len(), 1);

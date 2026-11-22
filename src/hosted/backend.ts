@@ -35,6 +35,10 @@ export interface OpenInfo {
   elapsed_ms: number;
   entry_count: number;
   bundle_count: number;
+  /** 目前作用中的語系代碼（雲端資料集為單一語系）。 */
+  locale: string;
+  /** 偵測到的語系代碼清單（雲端資料集固定單一語系）。 */
+  locales: string[];
 }
 
 export interface OpenResult {
@@ -428,11 +432,16 @@ export const openDataDir = async (_path?: string): Promise<OpenResult> => {
       elapsed_ms: Math.round(performance.now() - started),
       entry_count: Object.keys(catalog.entries).length,
       bundle_count: 0,
+      locale: "TW",
+      locales: ["TW"],
     },
     top: listDirChildren(state, ""),
     data_dir: label,
   };
 };
+
+/** 雲端資料集為單一語系，切換為 no-op（契約相容用）。 */
+export const setRegion = (_code: string): Promise<void> => Promise.resolve();
 
 /** 歡迎頁「重新連線」按鈕用；hosted 模式沒有本機資料夾可記住，恆 null。 */
 export const storedFolderLabel = (): Promise<string | null> => Promise.resolve(null);

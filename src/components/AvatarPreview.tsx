@@ -1,3 +1,4 @@
+import { createDatasetCache } from "../locale";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { getImage, type AvatarFrame, type AvatarFrames } from "../api";
 import {
@@ -12,7 +13,7 @@ import {
 
 // 貼圖快取（module-level）：試穿過程會反覆重用同一批 body/hair 貼圖，
 // 整個 session 共用一份，換裝備只補抓新圖。
-const imageCache = new Map<string, Promise<HTMLImageElement | null>>();
+const imageCache = createDatasetCache<string, Promise<HTMLImageElement | null>>();
 
 function decodeImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {

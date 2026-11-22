@@ -48,8 +48,8 @@ const JSON_PREFIX: &str = "assets/wzassets/json/";
 const SOUND_PREFIX: &str = "assets/wzdata/sound/";
 const SOUND_SUFFIXES: [&str; 2] = [".mp3", ".wav"];
 /// 目前索引格式版本（Phase 4 加入圖片索引 → 2；加入聲音索引 → 4；
-/// spriteset 無 count 前綴的 PPtr 連排佈局 → 5；新版 SpriteSheet asset → 6）。
-const CATALOG_VERSION: u32 = 6;
+/// spriteset 無 count 前綴的 PPtr 連排佈局 → 5；新版 SpriteSheet asset → 6；依語系分開圖集 → 7）。
+const CATALOG_VERSION: u32 = 7;
 /// 索引只收這兩種副檔名的資產。
 const WZJSON_SUFFIX: &str = ".wzjson";
 const JSON_SUFFIX: &str = ".json";
@@ -474,11 +474,43 @@ fn normalize_container_path(path: &str) -> Option<String> {
     None
 }
 
+/// 掃描索引鍵，找出資料集內出現的語系代碼（`String/<CODE>/…` 的 `<CODE>`）。
+/// 回傳偏好順序（TW→CN→JP→KR→其餘字母序）；都沒有時退回 `["TW"]`。
+fn detect_locales(catalog: &Catalog) -> Vec<String> {
+    use std::collections::BTreeSet;
+    let mut found: BTreeSet<String> = BTreeSet::new();
+    for key in catalog.entries.keys() {
+        if let Some(rest) = key.strip_prefix("String/") {
+            if let Some((code, leaf)) = rest.split_once('/') {
+                if !code.is_empty() && !leaf.is_empty() {
+                    found.insert(code.to_string());
+                }
+            }
+        }
+    }
+    const PREFERRED: [&str; 4] = ["TW", "CN", "JP", "KR"];
+    let mut ordered: Vec<String> = Vec::new();
+    for code in PREFERRED {
+        if found.remove(code) {
+            ordered.push(code.to_string());
+        }
+    }
+    ordered.extend(found);
+    if ordered.is_empty() {
+        ordered.push("TW".to_string());
+    }
+    ordered
+}
+
 // ── DataService（開啟狀態 + 懶解碼）─────────────────────────────
 
 pub struct DataService {
-    pub catalog: Catalog,
-    pub(crate) bundles: Vec<Bundle>,
+    pub catalog: Arc<Catalog>,
+    pub(crate) bundles: Arc<Vec<Bundle>>,
+    /// 資料集內偵測到的語系代碼（TW/CN/JP/KR…），偏好順序在前。
+    pub locales: Vec<String>,
+    /// 目前作用中的語系代碼（字串／Etc 資產路徑的第二段）。可於執行期切換。
+    locale: String,
     tree_cache: Mutex<TreeCache>,
     image_cache: Mutex<ImageCache>,
     pub(crate) tooltip_name_cache: crate::item_tooltip::TooltipNameCache,
@@ -514,6 +546,10 @@ pub struct OpenInfo {
     pub elapsed_ms: u128,
     pub entry_count: usize,
     pub bundle_count: usize,
+    /// 目前作用中的語系代碼。
+    pub locale: String,
+    /// 資料集內偵測到的所有語系代碼（偏好順序；長度 > 1 時前端顯示切換器）。
+    pub locales: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -572,31 +608,7 @@ impl DataService {
                 &catalog.root.join(format!("{}.bundle", meta.name)),
             )?);
         }
-        let info = OpenInfo {
-            from_cache,
-            elapsed_ms: t0.elapsed().as_millis(),
-            entry_count: catalog.entries.len(),
-            bundle_count: catalog.bundles.len(),
-        };
-        let service = DataService {
-            catalog,
-            bundles,
-            tree_cache: Mutex::new(TreeCache::default()),
-            image_cache: Mutex::new(ImageCache::default()),
-            tooltip_name_cache: Default::default(),
-            commodity_name_cache: Default::default(),
-            search_index_cache: Default::default(),
-            monster_book_cache: Default::default(),
-            monster_name_cache: Default::default(),
-            skill_book_cache: Default::default(),
-            skill_string_cache: Default::default(),
-            quest_book_cache: Default::default(),
-            quest_data_cache: Default::default(),
-            quest_name_cache: Default::default(),
-            map_bgm_cache: Default::default(),
-        };
-        service.validate_locations()?;
-        Ok((service, info))
+        Self::from_catalog(catalog, bundles, from_cache, t0)
     }
 
     /// wasm 入口：以 JS manifest 開啟資料集。先試 OPFS 上的快取，
@@ -618,15 +630,45 @@ impl DataService {
                 i as u32, meta.size,
             )))?);
         }
+        Self::from_catalog(catalog, bundles, from_cache, t0)
+    }
+
+    fn from_catalog(
+        catalog: Catalog,
+        bundles: Vec<Bundle>,
+        from_cache: bool,
+        opened_at: web_time::Instant,
+    ) -> Result<(Self, OpenInfo)> {
+        let locales = detect_locales(&catalog);
+        let service = Self::new(
+            Arc::new(catalog),
+            Arc::new(bundles),
+            locales[0].clone(),
+            locales,
+        );
+        service.validate_locations()?;
         let info = OpenInfo {
             from_cache,
-            elapsed_ms: t0.elapsed().as_millis(),
-            entry_count: catalog.entries.len(),
-            bundle_count: catalog.bundles.len(),
+            elapsed_ms: opened_at.elapsed().as_millis(),
+            entry_count: service.catalog.entries.len(),
+            bundle_count: service.bundles.len(),
+            locale: service.locale.clone(),
+            locales: service.locales.clone(),
         };
-        let service = DataService {
+        Ok((service, info))
+    }
+
+    fn new(
+        catalog: Arc<Catalog>,
+        bundles: Arc<Vec<Bundle>>,
+        locale: String,
+        locales: Vec<String>,
+    ) -> Self {
+        Self {
             catalog,
             bundles,
+            locale,
+            locales,
             tree_cache: Mutex::new(TreeCache::default()),
             image_cache: Mutex::new(ImageCache::default()),
             tooltip_name_cache: Default::default(),
@@ -640,9 +682,34 @@ impl DataService {
             quest_data_cache: Default::default(),
             quest_name_cache: Default::default(),
             map_bgm_cache: Default::default(),
-        };
-        service.validate_locations()?;
-        Ok((service, info))
+        }
+    }
+
+    pub fn locale(&self) -> &str {
+        &self.locale
+    }
+
+    /// 以目前語系組出字串表路徑，如 `String/TW/Item`。
+    pub(crate) fn string_path(&self, leaf: &str) -> String {
+        format!("String/{}/{leaf}", self.locale())
+    }
+
+    /// 以目前語系組出 Etc 資產路徑，如 `Etc/TW/Commodity`。
+    pub(crate) fn etc_path(&self, leaf: &str) -> String {
+        format!("Etc/{}/{leaf}", self.locale())
+    }
+
+    /// 共用已開啟的 bundle 與索引。各語系的請求保有自己的快取，即使並行完成也不會互相覆寫。
+    pub fn with_locale(&self, code: &str) -> Result<Self> {
+        if !self.locales.iter().any(|locale| locale == code) {
+            return Err(CatalogError::PathNotFound(format!("未知語系代碼: {code}")));
+        }
+        Ok(Self::new(
+            self.catalog.clone(),
+            self.bundles.clone(),
+            code.to_owned(),
+            self.locales.clone(),
+        ))
     }
 
     /// 列出 path 的直接子節點（"" = 頂層目錄）。
@@ -884,20 +951,22 @@ impl DataService {
                 CatalogError::CacheInvalid(format!("資產 {path} 的快取位置無效: {error}"))
             })?;
         }
-        for (path, sheet) in &self.catalog.image.sheets {
-            if let Some(location) = &sheet.index_loc {
-                self.validate_location(location).map_err(|error| {
-                    CatalogError::CacheInvalid(format!(
-                        "spritesheet {path} 的索引位置無效: {error}"
-                    ))
-                })?;
-            }
-            for (page, location) in &sheet.atlas_pages {
-                self.validate_location(location).map_err(|error| {
-                    CatalogError::CacheInvalid(format!(
-                        "spritesheet {path} page {page} 的位置無效: {error}"
-                    ))
-                })?;
+        for (path, variants) in &self.catalog.image.sheets_by_path {
+            for (locale, sheet) in variants {
+                if let Some(location) = &sheet.index_loc {
+                    self.validate_location(location).map_err(|error| {
+                        CatalogError::CacheInvalid(format!(
+                            "spritesheet {locale}/{path} 的索引位置無效: {error}"
+                        ))
+                    })?;
+                }
+                for (page, location) in &sheet.atlas_pages {
+                    self.validate_location(location).map_err(|error| {
+                        CatalogError::CacheInvalid(format!(
+                            "spritesheet {locale}/{path} page {page} 的位置無效: {error}"
+                        ))
+                    })?;
+                }
             }
         }
         for (asset_path, sprites) in &self.catalog.image.set_assets {
@@ -1061,6 +1130,20 @@ mod tests {
 
         std::fs::write(root.join("new.bundle"), b"not parsed during manifest check").unwrap();
         assert!(Catalog::load(&cache, &root).unwrap().is_none());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rebuilds_pre_locale_catalog_and_reuses_new_index() {
+        let root = temp_dir("locale-upgrade");
+        let cache = root.join("catalog.json");
+        let mut old = empty_catalog(&root);
+        old.version = 6;
+        old.save(&cache).unwrap();
+        let (_, first) = DataService::open(&root, &cache).unwrap();
+        assert!(!first.from_cache);
+        let (_, next) = DataService::open(&root, &cache).unwrap();
+        assert!(next.from_cache);
         std::fs::remove_dir_all(root).unwrap();
     }
 

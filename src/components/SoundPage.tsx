@@ -1,3 +1,4 @@
+import { createDatasetCache } from "../locale";
 import {
   useCallback,
   useEffect,
@@ -90,7 +91,7 @@ function EqualizerBars() {
 }
 
 // 地圖 miniMap 縮圖走既有 get_image（<imgPath>/miniMap/canvas），整個 session 快取。
-const miniMapCache = new Map<string, Promise<string | null>>();
+const miniMapCache = createDatasetCache<string, Promise<string | null>>();
 
 function loadMiniMapThumb(imgPath: string): Promise<string | null> {
   let cached = miniMapCache.get(imgPath);

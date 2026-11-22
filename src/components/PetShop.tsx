@@ -1,3 +1,4 @@
+import { createDatasetCache } from "../locale";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { getImage, type PetEquipInfo, type PetInfo } from "../api";
 
@@ -23,7 +24,7 @@ function fuzzyScore(query: string, name: string, id: string): number | null {
 }
 
 // icon dataURL 快取（module-level）：只抓看過的，看過就不再抓。
-const iconCache = new Map<string, Promise<string | null>>();
+const iconCache = createDatasetCache<string, Promise<string | null>>();
 
 // 依 iconPath 載入 icon；取不到時試 info/iconRaw 替代節點（比照 loadAvatarIcon 的 fallback）。
 export function loadPetIcon(path: string): Promise<string | null> {
